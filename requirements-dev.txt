@@ -1,0 +1,15 @@
+# Linting
+flake8==7.0.0
+black==23.12.1
+isort==5.13.2
+mypy==1.8.0
+
+# Documentation
+mkdocs==1.5.3
+mkdocs-material==9.5.3
+mkdocstrings[python]==0.24.0
+
+# Performance Profiling
+py-spy==0.3.14
+memory-profiler==0.61.0
+line-profiler==4.1.1

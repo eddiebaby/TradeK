@@ -1,0 +1,52 @@
+# TradeKnowledge Configuration
+
+app:
+  name: "TradeKnowledge"
+  version: "1.0.0"
+  debug: true
+  log_level: "INFO"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+
+database:
+  chroma:
+    persist_directory: "./data/chromadb"
+    collection_name: "trading_books"
+  sqlite:
+    path: "./data/knowledge.db"
+    fts_version: "fts5"
+
+ingestion:
+  chunk_size: 1000
+  chunk_overlap: 200
+  min_chunk_size: 100
+  max_chunk_size: 2000
+  
+embedding:
+  model: "text-embedding-ada-002"  # or "all-mpnet-base-v2" for local
+  batch_size: 100
+  cache_embeddings: true
+
+search:
+  default_results: 10
+  max_results: 50
+  min_score: 0.7
+  hybrid_weight: 0.7  # 0.7 semantic, 0.3 exact
+
+cache:
+  redis:
+    host: "localhost"
+    port: 6379
+    db: 0
+    ttl: 3600  # 1 hour
+  memory:
+    max_size: 1000
+    ttl: 600  # 10 minutes
+
+performance:
+  use_cpp_extensions: true
+  thread_pool_size: 8
+  batch_processing: true
