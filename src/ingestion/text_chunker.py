@@ -1,380 +1,408 @@
 """
-Intelligent Text Chunker for TradeKnowledge
-Handles smart text segmentation preserving semantic boundaries
+Intelligent Text Chunking for TradeKnowledge
+
+This module breaks text into optimal chunks for searching and embedding.
+The key challenge is maintaining context while keeping chunks at a reasonable size.
 """
 
-import logging
 import re
-from typing import List, Optional, Dict, Any
+import logging
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from utils.logging import get_logger
-from .pdf_parser import ExtractedContent
+from core.models import Chunk, ChunkType
 
-logger = get_logger(__name__)
-
-class ChunkBoundary(Enum):
-    """Types of chunk boundaries"""
-    PARAGRAPH = "paragraph"
-    SENTENCE = "sentence"
-    CODE_BLOCK = "code_block"
-    SECTION = "section"
-    HARD_LIMIT = "hard_limit"
+logger = logging.getLogger(__name__)
 
 @dataclass
-class TextChunk:
-    """Container for a text chunk with metadata"""
-    text: str
-    chunk_id: str
-    book_id: str
-    chunk_index: int
-    metadata: Dict[str, Any]
-    content_type: str = "text"
-    boundary_type: ChunkBoundary = ChunkBoundary.PARAGRAPH
-    overlap_with_previous: bool = False
-    
-class IntelligentChunker:
+class ChunkingConfig:
+    """Configuration for chunking behavior"""
+    chunk_size: int = 1000  # Target size in characters
+    chunk_overlap: int = 200  # Overlap between chunks
+    min_chunk_size: int = 100  # Minimum viable chunk
+    max_chunk_size: int = 2000  # Maximum chunk size
+    respect_sentences: bool = True  # Try to break at sentence boundaries
+    respect_paragraphs: bool = True  # Try to break at paragraph boundaries
+    preserve_code_blocks: bool = True  # Don't split code blocks
+
+class TextChunker:
     """
-    Intelligent text chunker that respects semantic boundaries
+    Intelligently chunks text for optimal search and retrieval.
     
-    Features:
-    - Never splits code blocks
-    - Respects paragraph boundaries
-    - Maintains section context
-    - Configurable chunk size with overlap
-    - Preserves formatting for special content
+    This class handles the complexity of breaking text into chunks that:
+    1. Maintain semantic coherence
+    2. Preserve context through overlap
+    3. Respect natural boundaries (sentences, paragraphs)
+    4. Handle special content (code, formulas) appropriately
     """
     
-    def __init__(self, 
-                 chunk_size: int = 1000,
-                 chunk_overlap: int = 200,
-                 min_chunk_size: int = 100,
-                 max_chunk_size: int = 2000):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.min_chunk_size = min_chunk_size
-        self.max_chunk_size = max_chunk_size
+    def __init__(self, config: ChunkingConfig = None):
+        """Initialize chunker with configuration"""
+        self.config = config or ChunkingConfig()
         
-        # Patterns for detecting special content
-        self.code_block_patterns = [
-            r'```[\s\S]*?```',  # Markdown code blocks
-            r'<pre>[\s\S]*?</pre>',  # HTML pre blocks
-            r'<code>[\s\S]*?</code>',  # HTML code blocks
-        ]
+        # Compile regex patterns for efficiency
+        self.sentence_end_pattern = re.compile(r'[.!?]\s+')
+        self.paragraph_pattern = re.compile(r'\n\s*\n')
+        self.code_block_pattern = re.compile(
+            r'```[\s\S]*?```|`[^`]+`',
+            re.MULTILINE
+        )
+        self.formula_pattern = re.compile(
+            r'\$\$[\s\S]*?\$\$|\$[^\$]+\$',
+            re.MULTILINE
+        )
         
-        self.section_markers = [
-            r'^#+\s+',  # Markdown headers
-            r'^Chapter\s+\d+',  # Chapter headers
-            r'^Section\s+\d+',  # Section headers
-            r'^Part\s+[IVX]+',  # Part headers
-        ]
-        
-        # Sentence boundary detection
-        self.sentence_endings = re.compile(r'[.!?]+\s+')
-        
-        # Paragraph boundary detection
-        self.paragraph_boundary = re.compile(r'\n\s*\n')
-    
-    def chunk_content(self, content_list: List[ExtractedContent], book_id: str) -> List[TextChunk]:
+    def chunk_text(self, 
+                   text: str, 
+                   book_id: str,
+                   metadata: Dict[str, Any] = None) -> List[Chunk]:
         """
-        Chunk a list of extracted content into optimally sized text chunks
+        Chunk text into optimal pieces.
+        
+        This is the main entry point for chunking. It coordinates
+        the identification of special content and the actual chunking process.
         
         Args:
-            content_list: List of ExtractedContent objects
-            book_id: Unique identifier for the book
+            text: The text to chunk
+            book_id: ID of the source book
+            metadata: Additional metadata for chunks
             
         Returns:
-            List of TextChunk objects
+            List of Chunk objects
         """
-        chunks = []
-        chunk_index = 0
+        if not text or not text.strip():
+            logger.warning(f"Empty text provided for book {book_id}")
+            return []
         
-        for content in content_list:
-            try:
-                content_chunks = self._chunk_single_content(content, book_id, chunk_index)
-                chunks.extend(content_chunks)
-                chunk_index += len(content_chunks)
-                
-            except Exception as e:
-                logger.warning(f"Error chunking content: {e}")
+        logger.info(f"Starting to chunk text for book {book_id}, length: {len(text)}")
+        
+        # Pre-process text to identify special regions
+        special_regions = self._identify_special_regions(text)
+        
+        # Perform the actual chunking
+        chunks = self._create_chunks(text, special_regions)
+        
+        # Convert to Chunk objects with proper metadata
+        chunk_objects = self._create_chunk_objects(
+            chunks, book_id, metadata or {}
+        )
+        
+        # Link chunks for context
+        self._link_chunks(chunk_objects)
+        
+        logger.info(f"Created {len(chunk_objects)} chunks for book {book_id}")
+        return chunk_objects
+    
+    def chunk_pages(self,
+                    pages: List[Dict[str, Any]],
+                    book_id: str,
+                    metadata: Dict[str, Any] = None) -> List[Chunk]:
+        """
+        Chunk a list of pages from a book.
+        
+        This method handles page-by-page chunking while maintaining
+        continuity across page boundaries.
+        
+        Args:
+            pages: List of page dictionaries with 'text' and 'page_number'
+            book_id: ID of the source book  
+            metadata: Additional metadata
+            
+        Returns:
+            List of Chunk objects
+        """
+        all_chunks = []
+        accumulated_text = ""
+        current_page_start = 1
+        
+        for page in pages:
+            page_num = page.get('page_number', 0)
+            page_text = page.get('text', '')
+            
+            if not page_text.strip():
                 continue
+            
+            # Add page text to accumulator
+            if accumulated_text:
+                accumulated_text += "\n"
+            accumulated_text += page_text
+            
+            # Check if we should chunk the accumulated text
+            if len(accumulated_text) >= self.config.chunk_size:
+                # Chunk what we have so far
+                chunks = self.chunk_text(accumulated_text, book_id, metadata)
+                
+                # Add page information to chunks
+                for chunk in chunks:
+                    chunk.page_start = current_page_start
+                    chunk.page_end = page_num
+                
+                all_chunks.extend(chunks)
+                
+                # Keep overlap for next batch
+                if chunks and self.config.chunk_overlap > 0:
+                    last_chunk_text = chunks[-1].text
+                    overlap_start = max(0, len(last_chunk_text) - self.config.chunk_overlap)
+                    accumulated_text = last_chunk_text[overlap_start:]
+                    current_page_start = page_num
+                else:
+                    accumulated_text = ""
+                    current_page_start = page_num + 1
         
-        logger.info(f"Created {len(chunks)} chunks from {len(content_list)} content blocks")
-        return chunks
+        # Handle remaining text
+        if accumulated_text.strip():
+            chunks = self.chunk_text(accumulated_text, book_id, metadata)
+            for chunk in chunks:
+                chunk.page_start = current_page_start
+                chunk.page_end = pages[-1].get('page_number', current_page_start)
+            all_chunks.extend(chunks)
+        
+        return all_chunks
     
-    def _chunk_single_content(self, content: ExtractedContent, book_id: str, 
-                            start_index: int) -> List[TextChunk]:
-        """Chunk a single ExtractedContent object"""
+    def _identify_special_regions(self, text: str) -> List[Tuple[int, int, str]]:
+        """
+        Identify regions that should not be split.
         
-        if content.content_type == "code":
-            return self._chunk_code_content(content, book_id, start_index)
-        elif content.content_type == "table":
-            return self._chunk_table_content(content, book_id, start_index)
-        elif content.content_type == "formula":
-            return self._chunk_formula_content(content, book_id, start_index)
-        else:
-            return self._chunk_text_content(content, book_id, start_index)
-    
-    def _chunk_code_content(self, content: ExtractedContent, book_id: str, 
-                          start_index: int) -> List[TextChunk]:
-        """Handle code content - never split code blocks"""
+        These include:
+        - Code blocks
+        - Mathematical formulas  
+        - Tables
         
-        text = content.text
+        Returns:
+            List of (start, end, type) tuples
+        """
+        regions = []
         
-        # If code is small enough, keep as single chunk
-        if len(text) <= self.max_chunk_size:
-            return [TextChunk(
-                text=text,
-                chunk_id=f"{book_id}_chunk_{start_index:06d}",
-                book_id=book_id,
-                chunk_index=start_index,
-                metadata=content.metadata,
-                content_type="code",
-                boundary_type=ChunkBoundary.CODE_BLOCK
-            )]
+        # Find code blocks
+        if self.config.preserve_code_blocks:
+            for match in self.code_block_pattern.finditer(text):
+                regions.append((match.start(), match.end(), 'code'))
         
-        # For very large code blocks, try to split on function/class boundaries
-        return self._split_large_code(content, book_id, start_index)
-    
-    def _split_large_code(self, content: ExtractedContent, book_id: str, 
-                         start_index: int) -> List[TextChunk]:
-        """Split large code blocks on logical boundaries"""
-        text = content.text
-        chunks = []
-        
-        # Try to split on function/class definitions
-        boundaries = []
-        for pattern in [r'\ndef\s+\w+', r'\nclass\s+\w+', r'\n\n\n']:
-            for match in re.finditer(pattern, text):
-                boundaries.append(match.start())
-        
-        if not boundaries:
-            # No good boundaries found, create single large chunk
-            return [TextChunk(
-                text=text,
-                chunk_id=f"{book_id}_chunk_{start_index:06d}",
-                book_id=book_id,
-                chunk_index=start_index,
-                metadata=content.metadata,
-                content_type="code",
-                boundary_type=ChunkBoundary.CODE_BLOCK
-            )]
-        
-        # Split on boundaries
-        boundaries.sort()
-        boundaries = [0] + boundaries + [len(text)]
-        
-        for i in range(len(boundaries) - 1):
-            chunk_text = text[boundaries[i]:boundaries[i + 1]].strip()
-            if len(chunk_text) >= self.min_chunk_size:
-                chunks.append(TextChunk(
-                    text=chunk_text,
-                    chunk_id=f"{book_id}_chunk_{start_index + len(chunks):06d}",
-                    book_id=book_id,
-                    chunk_index=start_index + len(chunks),
-                    metadata=content.metadata,
-                    content_type="code",
-                    boundary_type=ChunkBoundary.CODE_BLOCK
-                ))
-        
-        return chunks
-    
-    def _chunk_table_content(self, content: ExtractedContent, book_id: str,
-                           start_index: int) -> List[TextChunk]:
-        """Handle table content"""
-        return [TextChunk(
-            text=content.text,
-            chunk_id=f"{book_id}_chunk_{start_index:06d}",
-            book_id=book_id,
-            chunk_index=start_index,
-            metadata=content.metadata,
-            content_type="table",
-            boundary_type=ChunkBoundary.SECTION
-        )]
-    
-    def _chunk_formula_content(self, content: ExtractedContent, book_id: str,
-                             start_index: int) -> List[TextChunk]:
-        """Handle mathematical formulas"""
-        return [TextChunk(
-            text=content.text,
-            chunk_id=f"{book_id}_chunk_{start_index:06d}",
-            book_id=book_id,
-            chunk_index=start_index,
-            metadata=content.metadata,
-            content_type="formula",
-            boundary_type=ChunkBoundary.SECTION
-        )]
-    
-    def _chunk_text_content(self, content: ExtractedContent, book_id: str,
-                          start_index: int) -> List[TextChunk]:
-        """Chunk regular text content intelligently"""
-        text = content.text
-        
-        # First, check if text contains code blocks that shouldn't be split
-        protected_sections = self._identify_protected_sections(text)
-        
-        if not protected_sections:
-            # No protected sections, use regular chunking
-            return self._chunk_regular_text(text, content, book_id, start_index)
-        
-        # Handle text with protected sections
-        return self._chunk_text_with_protected_sections(text, protected_sections, 
-                                                      content, book_id, start_index)
-    
-    def _identify_protected_sections(self, text: str) -> List[tuple]:
-        """Identify sections that shouldn't be split (code blocks, etc.)"""
-        protected = []
-        
-        for pattern in self.code_block_patterns:
-            for match in re.finditer(pattern, text, re.DOTALL):
-                protected.append((match.start(), match.end(), 'code'))
+        # Find formulas
+        for match in self.formula_pattern.finditer(text):
+            regions.append((match.start(), match.end(), 'formula'))
         
         # Sort by start position
-        protected.sort(key=lambda x: x[0])
-        return protected
-    
-    def _chunk_regular_text(self, text: str, content: ExtractedContent, 
-                          book_id: str, start_index: int) -> List[TextChunk]:
-        """Chunk regular text respecting paragraph and sentence boundaries"""
-        chunks = []
+        regions.sort(key=lambda x: x[0])
         
-        # Split into paragraphs first
-        paragraphs = self.paragraph_boundary.split(text)
-        
-        current_chunk = ""
-        current_chunk_start = start_index
-        
-        for para in paragraphs:
-            para = para.strip()
-            if not para:
-                continue
-            
-            # Check if adding this paragraph would exceed chunk size
-            if current_chunk and len(current_chunk) + len(para) + 2 > self.chunk_size:
-                # Save current chunk and start new one
-                if len(current_chunk) >= self.min_chunk_size:
-                    chunks.append(self._create_text_chunk(
-                        current_chunk, content, book_id, 
-                        start_index + len(chunks), ChunkBoundary.PARAGRAPH
-                    ))
-                
-                # Start new chunk with overlap
-                current_chunk = self._get_overlap_text(current_chunk) + para
+        # Merge overlapping regions
+        merged = []
+        for region in regions:
+            if merged and region[0] < merged[-1][1]:
+                # Overlapping - extend the previous region
+                merged[-1] = (merged[-1][0], max(merged[-1][1], region[1]), 'mixed')
             else:
-                # Add paragraph to current chunk
-                if current_chunk:
-                    current_chunk += "\n\n" + para
-                else:
-                    current_chunk = para
+                merged.append(region)
         
-        # Add final chunk
-        if current_chunk and len(current_chunk) >= self.min_chunk_size:
-            chunks.append(self._create_text_chunk(
-                current_chunk, content, book_id, 
-                start_index + len(chunks), ChunkBoundary.PARAGRAPH
-            ))
-        
-        return chunks
+        return merged
     
-    def _chunk_text_with_protected_sections(self, text: str, protected_sections: List[tuple],
-                                          content: ExtractedContent, book_id: str,
-                                          start_index: int) -> List[TextChunk]:
-        """Chunk text while preserving protected sections"""
+    def _create_chunks(self, 
+                       text: str, 
+                       special_regions: List[Tuple[int, int, str]]) -> List[str]:
+        """
+        Create chunks respecting special regions and boundaries.
+        
+        This is the core chunking algorithm that:
+        1. Avoids splitting special regions
+        2. Prefers natural boundaries
+        3. Maintains overlap for context
+        """
         chunks = []
-        last_end = 0
+        current_pos = 0
         
-        for start, end, section_type in protected_sections:
-            # Chunk text before protected section
-            if start > last_end:
-                before_text = text[last_end:start].strip()
-                if before_text:
-                    text_chunks = self._chunk_regular_text(before_text, content, 
-                                                         book_id, start_index + len(chunks))
-                    chunks.extend(text_chunks)
+        while current_pos < len(text):
+            # Determine chunk end position
+            chunk_end = min(current_pos + self.config.chunk_size, len(text))
             
-            # Add protected section as single chunk
-            protected_text = text[start:end].strip()
-            if protected_text:
-                chunks.append(TextChunk(
-                    text=protected_text,
-                    chunk_id=f"{book_id}_chunk_{start_index + len(chunks):06d}",
-                    book_id=book_id,
-                    chunk_index=start_index + len(chunks),
-                    metadata=content.metadata,
-                    content_type=section_type,
-                    boundary_type=ChunkBoundary.CODE_BLOCK
-                ))
+            # Check if we're in or near a special region
+            for region_start, region_end, region_type in special_regions:
+                if current_pos <= region_start < chunk_end:
+                    # Special region starts within our chunk
+                    if region_end <= current_pos + self.config.max_chunk_size:
+                        # We can include the entire special region
+                        chunk_end = region_end
+                    else:
+                        # Special region is too large, chunk before it
+                        chunk_end = region_start
+                    break
             
-            last_end = end
-        
-        # Chunk remaining text after last protected section
-        if last_end < len(text):
-            after_text = text[last_end:].strip()
-            if after_text:
-                text_chunks = self._chunk_regular_text(after_text, content, 
-                                                     book_id, start_index + len(chunks))
-                chunks.extend(text_chunks)
+            # If not at a special region, find a good break point
+            if chunk_end < len(text):
+                chunk_end = self._find_break_point(text, current_pos, chunk_end)
+            
+            # Extract chunk
+            chunk_text = text[current_pos:chunk_end].strip()
+            
+            if len(chunk_text) >= self.config.min_chunk_size:
+                chunks.append(chunk_text)
+                
+                # Move position with overlap
+                if chunk_end < len(text):
+                    overlap_start = max(0, chunk_end - self.config.chunk_overlap)
+                    current_pos = overlap_start
+                else:
+                    current_pos = chunk_end
+            else:
+                # Chunk too small, extend it
+                current_pos = chunk_end
         
         return chunks
     
-    def _get_overlap_text(self, text: str) -> str:
-        """Get overlap text from the end of a chunk"""
-        if len(text) <= self.chunk_overlap:
-            return text + "\n\n"
+    def _find_break_point(self, text: str, start: int, ideal_end: int) -> int:
+        """
+        Find the best position to break text.
         
-        # Try to get overlap at sentence boundary
-        overlap_start = len(text) - self.chunk_overlap
-        sentences = self.sentence_endings.split(text[overlap_start:])
+        Priority:
+        1. Paragraph boundary
+        2. Sentence boundary  
+        3. Word boundary
+        4. Any position (fallback)
+        """
+        # Look for paragraph break
+        if self.config.respect_paragraphs:
+            paragraph_breaks = list(self.paragraph_pattern.finditer(
+                text[start:ideal_end + 100]  # Look a bit ahead
+            ))
+            if paragraph_breaks:
+                # Use the last paragraph break before ideal_end
+                for match in reversed(paragraph_breaks):
+                    if start + match.start() <= ideal_end:
+                        return start + match.end()
         
-        if len(sentences) > 1:
-            # Use complete sentences for overlap
-            overlap = sentences[-2] + sentences[-1]
-        else:
-            # Fallback to character-based overlap
-            overlap = text[-self.chunk_overlap:]
+        # Look for sentence break
+        if self.config.respect_sentences:
+            sentence_breaks = list(self.sentence_end_pattern.finditer(
+                text[start:ideal_end + 50]
+            ))
+            if sentence_breaks:
+                # Use the last sentence break
+                last_break = sentence_breaks[-1]
+                return start + last_break.end()
         
-        return overlap.strip() + "\n\n"
+        # Fall back to word boundary
+        space_pos = text.rfind(' ', start, ideal_end)
+        if space_pos > start:
+            return space_pos + 1
+        
+        # Last resort - break at ideal_end
+        return ideal_end
     
-    def _create_text_chunk(self, text: str, content: ExtractedContent, 
-                          book_id: str, chunk_index: int, 
-                          boundary_type: ChunkBoundary) -> TextChunk:
-        """Create a text chunk with proper metadata"""
-        return TextChunk(
-            text=text.strip(),
-            chunk_id=f"{book_id}_chunk_{chunk_index:06d}",
-            book_id=book_id,
-            chunk_index=chunk_index,
-            metadata=content.metadata,
-            content_type=content.content_type,
-            boundary_type=boundary_type
-        )
+    def _create_chunk_objects(self,
+                             text_chunks: List[str],
+                             book_id: str,
+                             metadata: Dict[str, Any]) -> List[Chunk]:
+        """
+        Convert text chunks to Chunk objects with metadata.
+        """
+        chunks = []
+        
+        for idx, text in enumerate(text_chunks):
+            # Determine chunk type
+            chunk_type = self._determine_chunk_type(text)
+            
+            chunk = Chunk(
+                book_id=book_id,
+                chunk_index=idx,
+                text=text,
+                chunk_type=chunk_type,
+                metadata=metadata.copy()
+            )
+            
+            chunks.append(chunk)
+        
+        return chunks
     
-    def get_chunk_stats(self, chunks: List[TextChunk]) -> Dict[str, Any]:
-        """Get statistics about the chunking results"""
-        if not chunks:
-            return {}
+    def _determine_chunk_type(self, text: str) -> ChunkType:
+        """
+        Determine the type of content in a chunk.
         
-        chunk_sizes = [len(chunk.text) for chunk in chunks]
-        content_types = {}
-        boundary_types = {}
+        This helps with search relevance and display formatting.
+        """
+        # Check for code indicators
+        code_indicators = ['def ', 'class ', 'import ', 'function', '{', '}', 
+                          'return ', 'if ', 'for ', 'while ']
+        code_count = sum(1 for indicator in code_indicators if indicator in text)
+        if code_count >= 3 or text.strip().startswith('```'):
+            return ChunkType.CODE
         
-        for chunk in chunks:
-            content_types[chunk.content_type] = content_types.get(chunk.content_type, 0) + 1
-            boundary_types[chunk.boundary_type.value] = boundary_types.get(chunk.boundary_type.value, 0) + 1
+        # Check for formula indicators
+        if '$' in text and any(x in text for x in ['=', '+', '-', '*', '/']):
+            return ChunkType.FORMULA
         
-        return {
-            "total_chunks": len(chunks),
-            "avg_chunk_size": sum(chunk_sizes) / len(chunk_sizes),
-            "min_chunk_size": min(chunk_sizes),
-            "max_chunk_size": max(chunk_sizes),
-            "content_types": content_types,
-            "boundary_types": boundary_types,
-            "total_characters": sum(chunk_sizes)
-        }
+        # Check for table indicators
+        if text.count('|') > 5 and text.count('\n') > 2:
+            return ChunkType.TABLE
+        
+        # Default to text
+        return ChunkType.TEXT
+    
+    def _link_chunks(self, chunks: List[Chunk]) -> None:
+        """
+        Link chunks to maintain context.
+        
+        This allows us to easily retrieve surrounding context
+        when displaying search results.
+        """
+        for i, chunk in enumerate(chunks):
+            if i > 0:
+                chunk.previous_chunk_id = chunks[i-1].id
+            if i < len(chunks) - 1:
+                chunk.next_chunk_id = chunks[i+1].id
 
-def chunk_extracted_content(content_list: List[ExtractedContent], book_id: str,
-                          chunk_size: int = 1000, chunk_overlap: int = 200) -> List[TextChunk]:
-    """Convenience function to chunk extracted content"""
-    chunker = IntelligentChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    return chunker.chunk_content(content_list, book_id)
+# Example usage and testing
+def test_chunker():
+    """Test the chunker with sample text"""
+    
+    # Sample text with code
+    sample_text = """
+    Chapter 3: Moving Averages in Trading
+    
+    Moving averages are one of the most popular technical indicators used in algorithmic trading.
+    They help smooth out price action and identify trends.
+    
+    Here's a simple implementation in Python:
+    
+    ```python
+    def calculate_sma(prices, period):
+        if len(prices) < period:
+            return None
+        return sum(prices[-period:]) / period
+    ```
+    
+    The simple moving average (SMA) calculates the arithmetic mean of prices over a specified period.
+    For example, a 20-day SMA sums up the closing prices of the last 20 days and divides by 20.
+    
+    Traders often use multiple moving averages:
+    - Short-term (e.g., 10-day): Responds quickly to price changes
+    - Medium-term (e.g., 50-day): Balances responsiveness and smoothness  
+    - Long-term (e.g., 200-day): Shows overall trend direction
+    
+    The formula for exponential moving average (EMA) is:
+    $EMA_t = α × Price_t + (1 - α) × EMA_{t-1}$
+    
+    Where α (alpha) is the smoothing factor: α = 2 / (N + 1)
+    """
+    
+    # Create chunker with small chunks for testing
+    config = ChunkingConfig(
+        chunk_size=300,
+        chunk_overlap=50,
+        preserve_code_blocks=True
+    )
+    chunker = TextChunker(config)
+    
+    # Chunk the text
+    chunks = chunker.chunk_text(sample_text, "test_book_001")
+    
+    # Display results
+    print(f"Created {len(chunks)} chunks\n")
+    for i, chunk in enumerate(chunks):
+        print(f"Chunk {i} ({chunk.chunk_type.value}):")
+        print(f"Length: {len(chunk.text)} characters")
+        print(f"Preview: {chunk.text[:100]}...")
+        print(f"Links: prev={chunk.previous_chunk_id}, next={chunk.next_chunk_id}")
+        print("-" * 50)
+
+if __name__ == "__main__":
+    test_chunker()
