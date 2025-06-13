@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # TradeKnowledge: Book Knowledge MCP Server
 ## Complete Implementation Guide for Algorithmic Trading Reference System
 
@@ -1543,3 +1544,6 @@ Remember:
 ---
 
 **END OF README**
+=======
+# TradeK
+>>>>>>> b2b9dceac139a33dbec370ff48a237d7c8f9bb2d

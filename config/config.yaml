@@ -18,6 +18,12 @@ database:
   sqlite:
     path: "./data/knowledge.db"
     fts_version: "fts5"
+  qdrant:
+    host: "localhost"
+    port: 6333
+    collection_name: "tradeknowledge"
+    use_grpc: false
+    https: false
 
 ingestion:
   chunk_size: 1000
@@ -26,8 +32,11 @@ ingestion:
   max_chunk_size: 2000
   
 embedding:
-  model: "text-embedding-ada-002"  # or "all-mpnet-base-v2" for local
-  batch_size: 100
+  model: "nomic-embed-text"  # Local Ollama model
+  dimension: 768
+  batch_size: 32
+  ollama_host: "http://localhost:11434"
+  timeout: 30
   cache_embeddings: true
 
 search:

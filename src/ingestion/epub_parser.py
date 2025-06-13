@@ -1,349 +1,320 @@
 """
-EPUB Parser for TradeKnowledge
-Handles EPUB text extraction with metadata preservation
+EPUB parser for TradeKnowledge
+
+Handles extraction of text and metadata from EPUB files.
 """
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-import hashlib
+from typing import Dict, List, Any, Optional, Tuple
 import re
-from html import unescape
+import html
+import asyncio
 
 import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
 
-from utils.logging import get_logger
-from .pdf_parser import ExtractedContent, BookMetadata  # Reuse data structures
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class EPUBParser:
     """
-    EPUB parser for extracting text and metadata from EPUB files
+    Parser for EPUB format ebooks.
+    
+    EPUB files are essentially ZIP archives containing HTML files,
+    so we need to extract and parse the HTML content.
     """
     
     def __init__(self):
-        self.code_patterns = [
-            r'<code>.*?</code>',
-            r'<pre>.*?</pre>',
-            r'```[\s\S]*?```',
-            r'def\s+\w+\s*\([^)]*\):',
-            r'class\s+\w+\s*\([^)]*\):',
-            r'import\s+\w+',
-            r'from\s+\w+\s+import',
-        ]
-        self.formula_patterns = [
-            r'\$\$.*?\$\$',
-            r'\$.*?\$',
-            r'\\begin\{equation\}.*?\\end\{equation\}',
-            r'\\begin\{align\}.*?\\end\{align\}',
-            r'<math[^>]*>.*?</math>',  # MathML
-        ]
+        """Initialize EPUB parser"""
+        self.supported_extensions = ['.epub']
     
-    def calculate_file_hash(self, file_path: Path) -> str:
-        """Calculate SHA-256 hash of the file"""
-        hash_sha256 = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_sha256.update(chunk)
-        return hash_sha256.hexdigest()
+    def can_parse(self, file_path: Path) -> bool:
+        """Check if this parser can handle the file"""
+        return file_path.suffix.lower() in self.supported_extensions
     
-    def extract_metadata(self, book: epub.EpubBook, file_path: Path) -> BookMetadata:
-        """Extract metadata from EPUB book"""
-        try:
-            # Get title
-            title = book.get_metadata('DC', 'title')
-            title = title[0][0] if title else file_path.stem
-            
-            # Get author(s)
-            authors = book.get_metadata('DC', 'creator')
-            author = authors[0][0] if authors else None
-            
-            # Get ISBN
-            identifiers = book.get_metadata('DC', 'identifier')
-            isbn = None
-            for identifier in identifiers:
-                if 'isbn' in str(identifier).lower():
-                    isbn = self._extract_isbn(str(identifier[0]))
-                    break
-            
-            # Get subject/description
-            subjects = book.get_metadata('DC', 'subject')
-            subject = subjects[0][0] if subjects else None
-            
-            # Get publication date
-            dates = book.get_metadata('DC', 'date')
-            creation_date = dates[0][0] if dates else None
-            
-            # Get publisher
-            publishers = book.get_metadata('DC', 'publisher')
-            producer = publishers[0][0] if publishers else None
-            
-            # Count chapters/sections to estimate pages
-            items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
-            estimated_pages = max(1, len(items) * 5)  # Rough estimate
-            
-            return BookMetadata(
-                title=title.strip() if title else file_path.stem,
-                author=author.strip() if author else None,
-                isbn=isbn,
-                pages=estimated_pages,
-                file_type="epub",
-                file_hash=self.calculate_file_hash(file_path),
-                creation_date=creation_date,
-                producer=producer.strip() if producer else None,
-                subject=subject.strip() if subject else None
-            )
-            
-        except Exception as e:
-            logger.error(f"Error extracting metadata from EPUB: {e}")
-            return BookMetadata(
-                title=file_path.stem,
-                pages=1,
-                file_type="epub",
-                file_hash=self.calculate_file_hash(file_path)
-            )
+    async def parse_file_async(self, file_path: Path) -> Dict[str, Any]:
+        """Async wrapper for parse_file"""
+        return await asyncio.to_thread(self.parse_file, file_path)
     
-    def _extract_isbn(self, text: str) -> Optional[str]:
-        """Extract ISBN from text"""
-        isbn_pattern = r'(?:ISBN(?:-1[03])?:?\s*)?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$|97[89][0-9]{10}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)(?:97[89][- ]?)?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]'
-        match = re.search(isbn_pattern, text)
-        if match:
-            return match.group().replace('-', '').replace(' ', '')
-        return None
-    
-    def extract_content(self, book: epub.EpubBook) -> List[ExtractedContent]:
-        """Extract text content from EPUB chapters"""
-        extracted_content = []
-        
-        # Get all document items (chapters, sections)
-        items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
-        
-        for item_num, item in enumerate(items, 1):
-            try:
-                # Get raw HTML content
-                content_html = item.get_content().decode('utf-8', errors='ignore')
-                
-                # Parse with BeautifulSoup
-                soup = BeautifulSoup(content_html, 'html.parser')
-                
-                # Extract chapter title if available
-                chapter_title = self._extract_chapter_title(soup, item.get_name())
-                
-                # Process different content types
-                self._extract_from_soup(soup, extracted_content, item_num, chapter_title)
-                
-            except Exception as e:
-                logger.warning(f"Error processing EPUB item {item.get_name()}: {e}")
-                continue
-        
-        return extracted_content
-    
-    def _extract_chapter_title(self, soup: BeautifulSoup, item_name: str) -> str:
-        """Extract chapter title from HTML"""
-        # Try to find title in various header tags
-        for tag in ['h1', 'h2', 'title']:
-            title_elem = soup.find(tag)
-            if title_elem and title_elem.get_text().strip():
-                return title_elem.get_text().strip()
-        
-        # Fallback to item name
-        return item_name.replace('.xhtml', '').replace('.html', '').replace('_', ' ')
-    
-    def _extract_from_soup(self, soup: BeautifulSoup, extracted_content: List[ExtractedContent], 
-                          chapter_num: int, chapter_title: str):
-        """Extract different types of content from BeautifulSoup object"""
-        
-        # Remove script and style tags
-        for tag in soup(['script', 'style']):
-            tag.decompose()
-        
-        # Process code blocks
-        self._extract_code_blocks(soup, extracted_content, chapter_num, chapter_title)
-        
-        # Process tables
-        self._extract_tables(soup, extracted_content, chapter_num, chapter_title)
-        
-        # Process mathematical content
-        self._extract_math_content(soup, extracted_content, chapter_num, chapter_title)
-        
-        # Extract main text content
-        self._extract_text_content(soup, extracted_content, chapter_num, chapter_title)
-    
-    def _extract_code_blocks(self, soup: BeautifulSoup, extracted_content: List[ExtractedContent],
-                           chapter_num: int, chapter_title: str):
-        """Extract code blocks"""
-        code_tags = soup.find_all(['code', 'pre'])
-        for code_tag in code_tags:
-            code_text = code_tag.get_text().strip()
-            if code_text and len(code_text) > 10:  # Skip very short code snippets
-                extracted_content.append(ExtractedContent(
-                    text=code_text,
-                    metadata={
-                        "chapter": chapter_num,
-                        "chapter_title": chapter_title,
-                        "language": code_tag.get('class', ['unknown'])[0]
-                    },
-                    page_number=chapter_num,
-                    content_type="code",
-                    section_info={"chapter_title": chapter_title}
-                ))
-                # Remove from soup to avoid duplication in main text
-                code_tag.decompose()
-    
-    def _extract_tables(self, soup: BeautifulSoup, extracted_content: List[ExtractedContent],
-                       chapter_num: int, chapter_title: str):
-        """Extract table content"""
-        tables = soup.find_all('table')
-        for table in tables:
-            table_text = self._format_html_table(table)
-            if table_text:
-                extracted_content.append(ExtractedContent(
-                    text=table_text,
-                    metadata={
-                        "chapter": chapter_num,
-                        "chapter_title": chapter_title
-                    },
-                    page_number=chapter_num,
-                    content_type="table",
-                    section_info={"chapter_title": chapter_title}
-                ))
-                # Remove from soup
-                table.decompose()
-    
-    def _extract_math_content(self, soup: BeautifulSoup, extracted_content: List[ExtractedContent],
-                            chapter_num: int, chapter_title: str):
-        """Extract mathematical formulas"""
-        math_tags = soup.find_all(['math', 'equation'])
-        for math_tag in math_tags:
-            math_text = str(math_tag)  # Keep original MathML/LaTeX
-            if math_text:
-                extracted_content.append(ExtractedContent(
-                    text=math_text,
-                    metadata={
-                        "chapter": chapter_num,
-                        "chapter_title": chapter_title
-                    },
-                    page_number=chapter_num,
-                    content_type="formula",
-                    section_info={"chapter_title": chapter_title}
-                ))
-                # Remove from soup
-                math_tag.decompose()
-    
-    def _extract_text_content(self, soup: BeautifulSoup, extracted_content: List[ExtractedContent],
-                            chapter_num: int, chapter_title: str):
-        """Extract main text content"""
-        # Get all text, preserving paragraph structure
-        paragraphs = soup.find_all(['p', 'div'])
-        
-        chapter_text_parts = []
-        for para in paragraphs:
-            text = para.get_text().strip()
-            if text and len(text) > 20:  # Skip very short paragraphs
-                chapter_text_parts.append(text)
-        
-        # Also get any remaining text
-        remaining_text = soup.get_text().strip()
-        if remaining_text and len(remaining_text) > 50:
-            chapter_text_parts.append(remaining_text)
-        
-        # Combine all text for this chapter
-        if chapter_text_parts:
-            full_text = '\n\n'.join(chapter_text_parts)
-            
-            # Clean up the text
-            full_text = self._clean_text(full_text)
-            
-            if full_text:
-                content_type = self._detect_content_type(full_text)
-                
-                extracted_content.append(ExtractedContent(
-                    text=full_text,
-                    metadata={
-                        "chapter": chapter_num,
-                        "chapter_title": chapter_title
-                    },
-                    page_number=chapter_num,
-                    content_type=content_type,
-                    section_info={"chapter_title": chapter_title}
-                ))
-    
-    def _format_html_table(self, table_tag) -> str:
-        """Format HTML table as text"""
-        rows = []
-        for row in table_tag.find_all('tr'):
-            cells = []
-            for cell in row.find_all(['td', 'th']):
-                cell_text = cell.get_text().strip()
-                cells.append(cell_text)
-            if cells:
-                rows.append(' | '.join(cells))
-        return '\n'.join(rows)
-    
-    def _clean_text(self, text: str) -> str:
-        """Clean extracted text"""
-        # Unescape HTML entities
-        text = unescape(text)
-        
-        # Normalize whitespace
-        text = re.sub(r'\s+', ' ', text)
-        
-        # Remove excessive newlines
-        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
-        
-        return text.strip()
-    
-    def _detect_content_type(self, text: str) -> str:
-        """Detect the type of content in text"""
-        # Check for code patterns
-        for pattern in self.code_patterns:
-            if re.search(pattern, text, re.MULTILINE | re.DOTALL):
-                return "code"
-        
-        # Check for mathematical formulas
-        for pattern in self.formula_patterns:
-            if re.search(pattern, text, re.MULTILINE | re.DOTALL):
-                return "formula"
-        
-        return "text"
-    
-    def parse_epub(self, file_path: Path) -> Tuple[BookMetadata, List[ExtractedContent]]:
+    def parse_file(self, file_path: Path) -> Dict[str, Any]:
         """
-        Main method to parse EPUB and extract content
+        Parse an EPUB file and extract content.
         
         Args:
             file_path: Path to EPUB file
             
         Returns:
-            Tuple of (metadata, extracted_content_list)
+            Dictionary with metadata and pages
         """
-        logger.info(f"Parsing EPUB: {file_path}")
+        logger.info(f"Starting to parse EPUB: {file_path}")
         
-        if not file_path.exists():
-            raise FileNotFoundError(f"EPUB file not found: {file_path}")
+        result = {
+            'metadata': {},
+            'pages': [],
+            'errors': []
+        }
         
         try:
-            # Open EPUB book
+            # Open EPUB file
             book = epub.read_epub(str(file_path))
             
             # Extract metadata
-            metadata = self.extract_metadata(book, file_path)
+            result['metadata'] = self._extract_metadata(book)
             
-            # Extract content
-            content = self.extract_content(book)
+            # Extract chapters/pages
+            result['pages'] = self._extract_content(book)
             
-            logger.info(f"Extracted {len(content)} content blocks from EPUB")
+            # Add statistics
+            result['statistics'] = {
+                'total_pages': len(result['pages']),
+                'total_words': sum(p['word_count'] for p in result['pages']),
+                'total_characters': sum(p['char_count'] for p in result['pages'])
+            }
             
-            return metadata, content
+            logger.info(
+                f"Successfully parsed EPUB: {result['statistics']['total_pages']} sections, "
+                f"{result['statistics']['total_words']} words"
+            )
             
         except Exception as e:
-            logger.error(f"Error parsing EPUB {file_path}: {e}")
-            raise
+            error_msg = f"Error parsing EPUB: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            result['errors'].append(error_msg)
+        
+        return result
+    
+    def _extract_metadata(self, book: epub.EpubBook) -> Dict[str, Any]:
+        """Extract metadata from EPUB"""
+        metadata = {}
+        
+        try:
+            # Title
+            title = book.get_metadata('DC', 'title')
+            if title:
+                metadata['title'] = title[0][0]
+            
+            # Author(s)
+            creators = book.get_metadata('DC', 'creator')
+            if creators:
+                authors = [creator[0] for creator in creators]
+                metadata['author'] = ', '.join(authors)
+            
+            # Language
+            language = book.get_metadata('DC', 'language')
+            if language:
+                metadata['language'] = language[0][0]
+            
+            # Publisher
+            publisher = book.get_metadata('DC', 'publisher')
+            if publisher:
+                metadata['publisher'] = publisher[0][0]
+            
+            # Publication date
+            date = book.get_metadata('DC', 'date')
+            if date:
+                metadata['publication_date'] = date[0][0]
+            
+            # ISBN
+            identifiers = book.get_metadata('DC', 'identifier')
+            for identifier in identifiers:
+                id_value = identifier[0]
+                id_type = identifier[1].get('id', '').lower()
+                if 'isbn' in id_type or self._is_isbn(id_value):
+                    metadata['isbn'] = id_value
+                    break
+            
+            # Description
+            description = book.get_metadata('DC', 'description')
+            if description:
+                metadata['description'] = description[0][0]
+            
+            # Subject/Categories
+            subjects = book.get_metadata('DC', 'subject')
+            if subjects:
+                metadata['subjects'] = [subject[0] for subject in subjects]
+            
+        except Exception as e:
+            logger.warning(f"Error extracting metadata: {e}")
+        
+        return metadata
+    
+    def _extract_content(self, book: epub.EpubBook) -> List[Dict[str, Any]]:
+        """Extract text content from EPUB"""
+        pages = []
+        page_number = 1
+        
+        # Get spine (reading order)
+        spine = book.spine
+        
+        for spine_item in spine:
+            item_id = spine_item[0]
+            
+            try:
+                item = book.get_item_with_id(item_id)
+                
+                if item and isinstance(item, epub.EpubHtml):
+                    # Extract text from HTML
+                    content = item.get_content()
+                    text, structure = self._parse_html_content(content)
+                    
+                    if text.strip():
+                        pages.append({
+                            'page_number': page_number,
+                            'text': text,
+                            'word_count': len(text.split()),
+                            'char_count': len(text),
+                            'chapter': structure.get('chapter'),
+                            'section': structure.get('section'),
+                            'item_id': item_id,
+                            'file_name': item.file_name
+                        })
+                        
+                        page_number += 1
+                        
+            except Exception as e:
+                logger.warning(f"Error processing spine item {item_id}: {e}")
+        
+        # Also process any items not in spine (some EPUBs are weird)
+        for item in book.get_items():
+            if isinstance(item, epub.EpubHtml) and item.id not in [s[0] for s in spine]:
+                try:
+                    content = item.get_content()
+                    text, structure = self._parse_html_content(content)
+                    
+                    if text.strip() and len(text) > 100:  # Only substantial content
+                        pages.append({
+                            'page_number': page_number,
+                            'text': text,
+                            'word_count': len(text.split()),
+                            'char_count': len(text),
+                            'chapter': structure.get('chapter'),
+                            'section': structure.get('section'),
+                            'item_id': item.id,
+                            'file_name': item.file_name,
+                            'not_in_spine': True
+                        })
+                        
+                        page_number += 1
+                        
+                except Exception as e:
+                    logger.debug(f"Error processing non-spine item: {e}")
+        
+        return pages
+    
+    def _parse_html_content(self, html_content: bytes) -> Tuple[str, Dict[str, Any]]:
+        """
+        Parse HTML content and extract text.
+        
+        Returns:
+            Tuple of (text, structure_info)
+        """
+        try:
+            # Parse HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Extract structure information
+            structure = {}
+            
+            # Try to find chapter title
+            for tag in ['h1', 'h2', 'h3']:
+                heading = soup.find(tag)
+                if heading:
+                    structure['chapter'] = heading.get_text(strip=True)
+                    break
+            
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.decompose()
+            
+            # Extract text
+            text = soup.get_text(separator='\n')
+            
+            # Clean up text
+            text = self._clean_text(text)
+            
+            # Look for code blocks
+            code_blocks = soup.find_all(['pre', 'code'])
+            if code_blocks:
+                structure['has_code'] = True
+                structure['code_blocks'] = []
+                
+                for block in code_blocks:
+                    code_text = block.get_text(strip=True)
+                    if code_text:
+                        structure['code_blocks'].append(code_text)
+            
+            # Look for math formulas (MathML or LaTeX)
+            math_elements = soup.find_all(['math', 'span'], 
+                                        class_=re.compile(r'math|equation|formula', re.I))
+            if math_elements:
+                structure['has_math'] = True
+            
+            return text, structure
+            
+        except Exception as e:
+            logger.error(f"Error parsing HTML content: {e}")
+            return "", {}
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean extracted text"""
+        # Decode HTML entities
+        text = html.unescape(text)
+        
+        # Remove excessive whitespace
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        text = re.sub(r' +', ' ', text)
+        
+        # Remove zero-width spaces and other unicode oddities
+        text = text.replace('\u200b', '')
+        text = text.replace('\ufeff', '')
+        
+        # Normalize quotes and dashes
+        text = text.replace('"', '"').replace('"', '"')
+        text = text.replace(''', "'").replace(''', "'")
+        text = text.replace('–', '-').replace('—', '-')
+        
+        return text.strip()
+    
+    def _is_isbn(self, value: str) -> bool:
+        """Check if a string looks like an ISBN"""
+        # Remove hyphens and spaces
+        clean_value = value.replace('-', '').replace(' ', '')
+        
+        # ISBN-10 or ISBN-13
+        if len(clean_value) in [10, 13]:
+            return clean_value[:-1].isdigit()
+        
+        return False
 
-def parse_epub_file(file_path: str) -> Tuple[BookMetadata, List[ExtractedContent]]:
-    """Convenience function to parse an EPUB file"""
+
+# Test EPUB parser
+def test_epub_parser():
+    """Test the EPUB parser"""
     parser = EPUBParser()
-    return parser.parse_epub(Path(file_path))
+    
+    # Test with a sample EPUB file
+    test_file = Path("data/books/sample.epub")
+    
+    if test_file.exists():
+        result = parser.parse_file(test_file)
+        
+        print(f"Title: {result['metadata'].get('title', 'Unknown')}")
+        print(f"Author: {result['metadata'].get('author', 'Unknown')}")
+        print(f"Sections: {result['statistics']['total_pages']}")
+        print(f"Words: {result['statistics']['total_words']}")
+        
+        # Show first section sample
+        if result['pages']:
+            first_page = result['pages'][0]
+            sample = first_page['text'][:200] + '...' if len(first_page['text']) > 200 else first_page['text']
+            print(f"\nFirst section sample:\n{sample}")
+    else:
+        print(f"Test file not found: {test_file}")
+        print("Please add an EPUB file to test with")
+
+
+if __name__ == "__main__":
+    # Setup logging for testing
+    logging.basicConfig(level=logging.DEBUG)
+    test_epub_parser()
