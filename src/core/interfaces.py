@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from core.models import Book, Chunk, SearchResult, SearchResponse
+from .models import Book, Chunk, SearchResult, SearchResponse
 
 class BookStorageInterface(ABC):
     """

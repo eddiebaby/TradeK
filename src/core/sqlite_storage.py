@@ -13,9 +13,14 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
+try:
+    import aiosqlite
+    AIOSQLITE_AVAILABLE = True
+except ImportError:
+    AIOSQLITE_AVAILABLE = False
 
-from core.interfaces import BookStorageInterface, ChunkStorageInterface
-from core.models import Book, Chunk, FileType, ChunkType
+from .interfaces import BookStorageInterface, ChunkStorageInterface
+from .models import Book, Chunk, FileType, ChunkType
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,11 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
         
         # Ensure database directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Connection pool for better performance
+        self._connection_pool_size = 5
+        self._connection_pool = []
+        self._pool_lock = asyncio.Lock()
         
         # Initialize database
         self._init_database()
@@ -104,33 +114,87 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
         conn.close()
         logger.info("Database initialized")
     
+    async def cleanup(self):
+        """Cleanup connection pool"""
+        async with self._pool_lock:
+            for conn in self._connection_pool:
+                await conn.close()
+            self._connection_pool.clear()
+        logger.info("SQLite storage cleaned up")
+    
     @asynccontextmanager
     async def _get_connection(self):
-        """Get database connection (async context manager)"""
-        # Create a new connection for each operation to avoid threading issues
-        conn = await asyncio.to_thread(
-            sqlite3.connect, 
-            self.db_path,
-            check_same_thread=False
-        )
-        conn.row_factory = sqlite3.Row
+        """Get database connection from pool (async context manager)"""
+        async with self._pool_lock:
+            if self._connection_pool:
+                conn = self._connection_pool.pop()
+            else:
+                if AIOSQLITE_AVAILABLE:
+                    # Create new connection with better settings using aiosqlite
+                    conn = await aiosqlite.connect(
+                        self.db_path,
+                        timeout=30.0,
+                        check_same_thread=False
+                    )
+                    conn.row_factory = aiosqlite.Row
+                    # Enable WAL mode for better concurrent access
+                    await conn.execute("PRAGMA journal_mode=WAL")
+                    await conn.execute("PRAGMA synchronous=NORMAL")
+                    await conn.execute("PRAGMA cache_size=10000")
+                    await conn.execute("PRAGMA temp_store=memory")
+                else:
+                    # Fallback to sqlite3 with asyncio.to_thread
+                    conn = await asyncio.to_thread(
+                        sqlite3.connect, 
+                        self.db_path,
+                        timeout=30.0,
+                        check_same_thread=False
+                    )
+                    conn.row_factory = sqlite3.Row
+                    # Enable optimizations
+                    await asyncio.to_thread(conn.execute, "PRAGMA journal_mode=WAL")
+                    await asyncio.to_thread(conn.execute, "PRAGMA synchronous=NORMAL")
+                    await asyncio.to_thread(conn.execute, "PRAGMA cache_size=10000")
+                    await asyncio.to_thread(conn.execute, "PRAGMA temp_store=memory")
         
         try:
             yield conn
         finally:
-            await asyncio.to_thread(conn.close)
+            # Return connection to pool
+            async with self._pool_lock:
+                if len(self._connection_pool) < self._connection_pool_size:
+                    self._connection_pool.append(conn)
+                else:
+                    await conn.close()
     
     # Book Storage Methods
     
     async def save_book(self, book: Book) -> bool:
         """Save a book's metadata"""
         try:
+            # Validate book data before saving
+            if not book.id or len(book.id) > 255:
+                raise ValueError("Invalid book ID")
+            if not book.title or len(book.title) > 1000:
+                raise ValueError("Invalid book title")
+            
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Convert metadata to JSON
-                metadata_json = json.dumps(book.metadata)
-                categories_json = json.dumps(book.categories)
+                # Convert metadata to JSON with size limits
+                try:
+                    metadata_json = json.dumps(book.metadata)
+                    if len(metadata_json) > 10000:  # 10KB limit
+                        raise ValueError("Book metadata too large")
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"Invalid book metadata: {e}")
+                
+                try:
+                    categories_json = json.dumps(book.categories)
+                    if len(categories_json) > 1000:  # 1KB limit
+                        raise ValueError("Categories data too large")
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"Invalid categories: {e}")
                 
                 # Insert or replace
                 await asyncio.to_thread(
@@ -220,14 +284,16 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 cursor = conn.cursor()
                 
                 if category:
-                    # Search in categories JSON
+                    # Search in categories JSON - properly sanitize category
+                    # Escape SQL LIKE wildcards and validate category
+                    sanitized_category = category.replace('%', '\\%').replace('_', '\\_')
                     query = """
                         SELECT * FROM books 
-                        WHERE categories LIKE ?
+                        WHERE categories LIKE ? ESCAPE '\'
                         ORDER BY created_at DESC
                         LIMIT ? OFFSET ?
                     """
-                    params = (f'%{category}%', limit, offset)
+                    params = (f'%{sanitized_category}%', limit, offset)
                 else:
                     query = """
                         SELECT * FROM books
@@ -457,21 +523,31 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Build query
+                # Build query - SECURITY FIX: Use proper parameterization
                 if book_ids:
-                    # Filter by book IDs
-                    placeholders = ','.join('?' * len(book_ids))
-                    fts_query = f"""
+                    # Validate book_ids are strings and not too many
+                    if len(book_ids) > 100:  # Reasonable limit
+                        raise ValueError("Too many book IDs provided (max 100)")
+                    
+                    validated_book_ids = []
+                    for book_id in book_ids:
+                        if not isinstance(book_id, str) or len(book_id) > 255:
+                            raise ValueError(f"Invalid book ID: {book_id}")
+                        validated_book_ids.append(book_id)
+                    
+                    # Create placeholders safely
+                    placeholders = ','.join('?' * len(validated_book_ids))
+                    fts_query = """
                         SELECT c.*, snippet(chunks_fts, 1, '<mark>', '</mark>', '...', 20) as snippet,
                                rank as score
                         FROM chunks_fts 
                         JOIN chunks c ON chunks_fts.id = c.id
                         WHERE chunks_fts MATCH ? 
-                        AND c.book_id IN ({placeholders})
+                        AND c.book_id IN (""" + placeholders + """)
                         ORDER BY rank
                         LIMIT ?
                     """
-                    params = [query] + book_ids + [limit]
+                    params = [query] + validated_book_ids + [limit]
                 else:
                     fts_query = """
                         SELECT c.*, snippet(chunks_fts, 1, '<mark>', '</mark>', '...', 20) as snippet,
@@ -581,7 +657,7 @@ async def test_storage():
         id="test-001",
         title="Test Book",
         author="Test Author",
-        file_path="/tmp/test.pdf",
+        file_path="data/books/test.pdf",  # FIXED: Use relative path
         file_type=FileType.PDF,
         file_hash="testhash123"
     )

@@ -1,15 +1,62 @@
-# Linting
-flake8==7.0.0
-black==23.12.1
-isort==5.13.2
-mypy==1.8.0
+# Development Dependencies for London School TDD
+
+# Core Testing Framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-xdist>=3.3.1  # Parallel test execution
+pytest-benchmark>=4.0.0  # Performance testing
+pytest-timeout>=2.2.0  # Test timeout management
+
+# Test Quality and Analysis
+coverage>=7.3.0
+pytest-html>=4.1.1  # HTML test reports
+pytest-json-report>=1.5.0  # JSON test reports
+mutmut>=2.4.3  # Mutation testing
+
+# Mocking and Fixtures
+factory-boy>=3.3.0  # Test data factories
+responses>=0.24.0  # HTTP request mocking
+freezegun>=1.2.2  # Time mocking
+
+# Security Testing
+bandit>=1.7.5  # Security vulnerability scanner
+safety>=2.3.0  # Dependency vulnerability scanner
+
+# Code Quality
+flake8>=6.1.0
+black>=23.12.0
+isort>=5.13.0
+mypy>=1.8.0
+pylint>=3.0.0
+pre-commit>=3.6.0
+
+# Type Checking
+types-PyYAML>=6.0.12
+types-requests>=2.31.0
+types-python-dateutil>=2.8.19
 
 # Documentation
-mkdocs==1.5.3
-mkdocs-material==9.5.3
-mkdocstrings[python]==0.24.0
+mkdocs>=1.5.3
+mkdocs-material>=9.5.3
+mkdocstrings[python]>=0.24.0
+
+# Load Testing
+locust>=2.17.0
+
+# Property-Based Testing
+hypothesis>=6.92.0
+
+# Database Testing
+pytest-postgresql>=5.0.0
+pytest-redis>=3.0.2
 
 # Performance Profiling
-py-spy==0.3.14
-memory-profiler==0.61.0
-line-profiler==4.1.1
+py-spy>=0.3.14
+memory-profiler>=0.61.0
+line-profiler>=4.1.1
+
+# Development Tools
+ipdb>=0.13.13  # Interactive debugger
+pudb>=2024.1.1  # Full-screen debugger

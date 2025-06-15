@@ -11,12 +11,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# Setup logging first
+# Setup logging first - FIXED: Ensure logs directory exists
+log_dir = Path('logs')
+log_dir.mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/tradeknowledge.log'),
+        logging.FileHandler(log_dir / 'tradeknowledge.log'),
         logging.StreamHandler()
     ]
 )
@@ -24,9 +27,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import our components
-from ingestion.ingestion_engine import IngestionEngine
-from search.hybrid_search import HybridSearch
-from mcp.server import TradeKnowledgeServer
+from .ingestion.ingestion_engine import IngestionEngine
+from .ingestion.enhanced_book_processor import EnhancedBookProcessor
+from .ingestion.resource_monitor import ResourceMonitor, ResourceLimits
+from .search.hybrid_search import HybridSearch
+from .mcp.server import TradeKnowledgeServer
 
 class TradeKnowledgeApp:
     """Main application class"""
@@ -41,17 +46,17 @@ class TradeKnowledgeApp:
         """Initialize all components"""
         logger.info("Initializing TradeKnowledge application...")
         
-        # Initialize ingestion engine
+        # PERFORMANCE FIX: Initialize independent components in parallel
         self.ingestion_engine = IngestionEngine()
-        await self.ingestion_engine.initialize()
-        
-        # Initialize search engine
         self.search_engine = HybridSearch()
-        await self.search_engine.initialize()
-        
-        # Initialize MCP server
         self.mcp_server = TradeKnowledgeServer()
-        await self.mcp_server.initialize()
+        
+        # Initialize components in parallel (they don't depend on each other)
+        await asyncio.gather(
+            self.ingestion_engine.initialize(),
+            self.search_engine.initialize(),
+            self.mcp_server.initialize()
+        )
         
         logger.info("TradeKnowledge application initialized successfully")
     
@@ -59,12 +64,17 @@ class TradeKnowledgeApp:
         """Cleanup resources"""
         logger.info("Cleaning up...")
         
+        # Cleanup components in parallel
+        cleanup_tasks = []
         if self.mcp_server:
-            await self.mcp_server.cleanup()
+            cleanup_tasks.append(self.mcp_server.cleanup())
         if self.search_engine:
-            await self.search_engine.cleanup()
+            cleanup_tasks.append(self.search_engine.cleanup())
         if self.ingestion_engine:
-            await self.ingestion_engine.cleanup()
+            cleanup_tasks.append(self.ingestion_engine.cleanup())
+        
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
     
     async def add_book_command(self, file_path: str, categories: Optional[str] = None):
         """Add a book via CLI"""
@@ -206,6 +216,83 @@ class TradeKnowledgeApp:
         except Exception as e:
             print(f"❌ Error getting stats: {e}")
     
+    async def test_optimized_command(self, pdf_path: str):
+        """Test optimized PDF processing"""
+        print(f"🧪 Testing optimized PDF processing for: {pdf_path}")
+        
+        path = Path(pdf_path)
+        if not path.exists():
+            print(f"❌ File not found: {pdf_path}")
+            return
+        
+        # Configure resource limits for WSL2
+        limits = ResourceLimits(
+            max_memory_percent=75.0,  # More conservative for WSL2
+            max_memory_mb=1500,       # Limit to 1.5GB
+            warning_threshold=60.0,   # Warn earlier
+            check_interval=3.0        # Check more frequently
+        )
+        
+        # Initialize enhanced processor
+        processor = EnhancedBookProcessor()
+        processor.resource_monitor = ResourceMonitor(limits)
+        
+        try:
+            print("🔧 Initializing enhanced book processor...")
+            await processor.initialize()
+            
+            # Add detailed resource monitoring
+            async def detailed_callback(check):
+                usage = check['usage']
+                print(f"💾 Memory: {usage['system_used_percent']:.1f}% system, "
+                      f"{usage['process_memory_mb']:.1f}MB process")
+                
+                if check['memory_warning']:
+                    print(f"⚠️  Memory warning: {check['recommendations']}")
+                
+                if check['memory_critical']:
+                    print(f"🚨 Memory critical: {check['recommendations']}")
+            
+            processor.resource_monitor.add_callback(detailed_callback)
+            
+            # Process the file
+            print(f"🚀 Starting optimized processing...")
+            result = await processor.add_book(
+                pdf_path,
+                metadata={
+                    'categories': ['test', 'optimized'],
+                    'description': f'Test processing of {path.name}'
+                },
+                force_reprocess=True
+            )
+            
+            if result['success']:
+                print(f"✅ Successfully processed: {result['title']}")
+                print(f"📊 Chunks created: {result['chunks_created']}")
+                print(f"⏱️  Processing time: {result['processing_time']:.1f}s")
+                print(f"🔍 OCR used: {result['ocr_used']}")
+                
+                # Show content analysis
+                analysis = result['content_analysis']
+                print(f"📈 Content analysis: {analysis['code_blocks']} code blocks, "
+                      f"{analysis['formulas']} formulas, {analysis['tables']} tables")
+                
+            else:
+                print(f"❌ Processing failed: {result['error']}")
+                if 'details' in result:
+                    print(f"Details: {result['details']}")
+        
+        except Exception as e:
+            print(f"❌ Exception during processing: {e}")
+            logger.error(f"Exception during optimized test: {e}", exc_info=True)
+        
+        finally:
+            try:
+                await processor.cleanup()
+                print("🧹 Cleanup completed")
+            except Exception as e:
+                print(f"Error during cleanup: {e}")
+
     async def run_mcp_server(self):
         """Run the MCP server"""
         if not self.mcp_server:
@@ -238,6 +325,10 @@ async def main():
     add_parser = subparsers.add_parser('add-book', help='Add a book to the knowledge base')
     add_parser.add_argument('file_path', help='Path to the PDF file')
     add_parser.add_argument('--categories', help='Comma-separated categories')
+    
+    # Test optimized command
+    test_parser = subparsers.add_parser('test-optimized', help='Test optimized PDF processing')
+    test_parser.add_argument('file_path', help='Path to the PDF file')
     
     # Search command
     search_parser = subparsers.add_parser('search', help='Search the knowledge base')
@@ -273,6 +364,9 @@ async def main():
         # Execute command
         if args.command == 'add-book':
             await app.add_book_command(args.file_path, args.categories)
+        
+        elif args.command == 'test-optimized':
+            await app.test_optimized_command(args.file_path)
         
         elif args.command == 'search':
             await app.search_command(args.query, args.type, args.results)

@@ -9,13 +9,14 @@ import asyncio
 from typing import List, Dict, Any, Optional
 import json
 import hashlib
+import random
 from datetime import datetime
 
 import httpx
 import numpy as np
 
-from core.models import Chunk
-from core.config import get_config
+from ..core.models import Chunk
+from ..core.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,9 @@ class LocalEmbeddingGenerator:
     completely offline with no API costs.
     """
     
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, config=None, model_name: Optional[str] = None):
         """Initialize local embedding generator"""
-        self.config = get_config()
+        self.config = config or get_config()
         self.model_name = model_name or self.config.embedding.model
         self.ollama_host = self.config.embedding.ollama_host
         self.embedding_dimension = self.config.embedding.dimension
@@ -45,6 +46,15 @@ class LocalEmbeddingGenerator:
         
         # Verify Ollama is running (will be called lazily)
         self._ollama_verified = False
+        
+        # Circuit breaker for handling failures
+        self._circuit_breaker = {
+            'failure_count': 0,
+            'last_failure_time': None,
+            'state': 'closed',  # closed, open, half-open
+            'failure_threshold': 5,
+            'recovery_timeout': 60  # seconds
+        }
         
     async def _verify_ollama(self):
         """Verify Ollama is running and model is available"""
@@ -140,8 +150,8 @@ class LocalEmbeddingGenerator:
             task = self._generate_single_embedding(text)
             tasks.append(task)
         
-        # Run in parallel with semaphore to limit concurrent requests
-        sem = asyncio.Semaphore(5)  # Max 5 concurrent requests
+        # Run in parallel with semaphore to limit concurrent requests - PERFORMANCE FIX: Configurable
+        sem = asyncio.Semaphore(self.config.embedding.max_concurrent_requests)
         
         async def bounded_task(task):
             async with sem:
@@ -152,41 +162,65 @@ class LocalEmbeddingGenerator:
         
         return embeddings
     
-    async def _generate_single_embedding(self, text: str) -> List[float]:
-        """Generate embedding for a single text"""
-        try:
-            # Prepare request
-            data = {
-                "model": self.model_name,
-                "prompt": text
-            }
-            
-            # Send request to Ollama
-            response = await self.client.post(
-                f"{self.ollama_host}/api/embeddings",
-                json=data
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                embedding = result['embedding']
+    async def _generate_single_embedding(self, text: str, max_retries: int = 3) -> List[float]:
+        """Generate embedding for a single text with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                # Prepare request
+                data = {
+                    "model": self.model_name,
+                    "prompt": text
+                }
                 
-                # Verify dimension
-                if len(embedding) != self.embedding_dimension:
-                    logger.warning(
-                        f"Embedding dimension mismatch: "
-                        f"expected {self.embedding_dimension}, got {len(embedding)}"
-                    )
+                # Send request to Ollama with timeout
+                response = await self.client.post(
+                    f"{self.ollama_host}/api/embeddings",
+                    json=data,
+                    timeout=self.timeout
+                )
                 
-                return embedding
-            else:
-                logger.error(f"Ollama API error: {response.status_code} - {response.text}")
-                # Return zero vector on error
-                return [0.0] * self.embedding_dimension
-                
-        except Exception as e:
-            logger.error(f"Error generating embedding: {e}")
-            return [0.0] * self.embedding_dimension
+                if response.status_code == 200:
+                    result = response.json()
+                    embedding = result['embedding']
+                    
+                    # Verify dimension
+                    if len(embedding) != self.embedding_dimension:
+                        logger.warning(
+                            f"Embedding dimension mismatch: "
+                            f"expected {self.embedding_dimension}, got {len(embedding)}"
+                        )
+                    
+                    return embedding
+                elif response.status_code == 429:  # Rate limited
+                    # Exponential backoff
+                    wait_time = (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(f"Rate limited, waiting {wait_time:.1f}s before retry {attempt + 1}/{max_retries}")
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"Ollama API error: {response.status_code} - {response.text}")
+                    if attempt == max_retries - 1:  # Last attempt
+                        return [0.0] * self.embedding_dimension
+                    else:
+                        # Brief wait before retry
+                        await asyncio.sleep(1)
+                        continue
+                    
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}")
+                if attempt == max_retries - 1:
+                    return [0.0] * self.embedding_dimension
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            except Exception as e:
+                logger.error(f"Error generating embedding (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt == max_retries - 1:
+                    return [0.0] * self.embedding_dimension
+                await asyncio.sleep(1)
+                continue
+        
+        # Should not reach here, but fallback
+        return [0.0] * self.embedding_dimension
     
     async def generate_query_embedding(self, query: str) -> List[float]:
         """Generate embedding for a search query"""
@@ -253,7 +287,20 @@ class LocalEmbeddingGenerator:
     
     async def cleanup(self):
         """Cleanup resources"""
-        await self.client.aclose()
+        try:
+            await self.client.aclose()
+        except Exception as e:
+            logger.error(f"Error during embedding generator cleanup: {e}")
+    
+    async def __aenter__(self):
+        """Async context manager entry"""
+        await self._verify_ollama()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        await self.cleanup()
+        return False
     
     def get_stats(self) -> Dict[str, Any]:
         """Get embedding generation statistics"""
@@ -271,5 +318,6 @@ class LocalEmbeddingGenerator:
             'total_requests': total_requests
         }
 
-# Compatibility layer for smooth migration
-EmbeddingGenerator = LocalEmbeddingGenerator
+# Note: EmbeddingGenerator compatibility alias removed.
+# Import LocalEmbeddingGenerator directly or use the original from embeddings.py
+# Example: from ingestion.local_embeddings import LocalEmbeddingGenerator

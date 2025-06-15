@@ -1,6 +1,9 @@
 """
 ChromaDB vector storage implementation
 
+DEPRECATED: This module is deprecated in favor of QdrantStorage.
+Use src.core.qdrant_storage.QdrantStorage instead for better performance and features.
+
 This handles semantic search using vector embeddings.
 """
 
@@ -13,8 +16,8 @@ from pathlib import Path
 import chromadb
 from chromadb.config import Settings
 
-from core.interfaces import VectorStorageInterface
-from core.models import Chunk
+from .interfaces import VectorStorageInterface
+from .models import Chunk
 
 logger = logging.getLogger(__name__)
 

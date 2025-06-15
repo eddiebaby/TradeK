@@ -18,16 +18,18 @@ from datetime import datetime
 import hashlib
 import mimetypes
 
-from core.models import Book, Chunk, FileType, IngestionStatus
-from core.sqlite_storage import SQLiteStorage
-from core.chroma_storage import ChromaDBStorage
-from ingestion.pdf_parser import PDFParser
-from ingestion.epub_parser import EPUBParser
-from ingestion.content_analyzer import ContentAnalyzer
-from ingestion.text_chunker import TextChunker, ChunkingConfig
-from ingestion.embeddings import EmbeddingGenerator
-from utils.cache_manager import get_cache_manager
-from search.query_suggester import QuerySuggester
+from ..core.models import Book, Chunk, FileType, IngestionStatus
+from ..core.sqlite_storage import SQLiteStorage
+from ..core.qdrant_storage import QdrantStorage
+from ..core.config import get_config
+from .pdf_parser import PDFParser
+from .epub_parser import EPUBParser
+from .content_analyzer import ContentAnalyzer
+from .text_chunker import TextChunker, ChunkingConfig
+from .local_embeddings import LocalEmbeddingGenerator
+from .resource_monitor import get_resource_monitor, monitor_processing
+from ..utils.cache_manager import get_cache_manager
+from ..search.query_suggester import QuerySuggester
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +66,9 @@ class EnhancedBookProcessor:
         )
         
         # Storage
-        self.embedding_generator: Optional[EmbeddingGenerator] = None
+        self.embedding_generator: Optional[LocalEmbeddingGenerator] = None
         self.sqlite_storage: Optional[SQLiteStorage] = None
-        self.chroma_storage: Optional[ChromaDBStorage] = None
+        self.vector_storage: Optional[QdrantStorage] = None
         
         # Phase 2 components
         self.cache_manager = None
@@ -74,6 +76,9 @@ class EnhancedBookProcessor:
         
         # Processing state
         self.current_status: Optional[IngestionStatus] = None
+        
+        # Resource monitoring
+        self.resource_monitor = get_resource_monitor()
         
         # Supported file types
         self.supported_extensions = {
@@ -85,12 +90,13 @@ class EnhancedBookProcessor:
         """Initialize all components"""
         logger.info("Initializing enhanced book processor...")
         
-        # Initialize storage
-        self.sqlite_storage = SQLiteStorage()
-        self.chroma_storage = ChromaDBStorage()
+        # Initialize storage with proper configuration  
+        config = get_config()
+        self.sqlite_storage = SQLiteStorage(config.database.sqlite.path)
+        self.vector_storage = QdrantStorage(config.database.qdrant.collection_name)
         
-        # Initialize embedding generator
-        self.embedding_generator = EmbeddingGenerator()
+        # Initialize embedding generator with configuration
+        self.embedding_generator = LocalEmbeddingGenerator(config)
         
         # Initialize Phase 2 components
         self.cache_manager = await get_cache_manager()
@@ -156,10 +162,30 @@ class EnhancedBookProcessor:
                 await self.cache_manager.set(cache_key, result, ttl=86400)  # Cache for 1 day
                 return result
         
-        # Start processing
+        # Start processing with resource monitoring
         logger.info(f"Starting enhanced processing: {path.name}")
         
+        # Start resource monitoring
+        await self.resource_monitor.start_monitoring()
+        
+        # Set up resource monitoring callback
+        async def resource_callback(check):
+            if check['memory_critical'] and self.current_status:
+                self.current_status.current_stage = 'paused_memory'
+                logger.warning("Processing paused due to memory constraints")
+                await self.resource_monitor.wait_for_memory_available()
+                if self.current_status:
+                    self.current_status.current_stage = 'resumed'
+        
+        self.resource_monitor.add_callback(resource_callback)
+        
         try:
+            # Check initial memory availability
+            if not await self.resource_monitor.wait_for_memory_available(timeout=30):
+                return {
+                    'success': False,
+                    'error': 'Insufficient memory to start processing'
+                }
             # Step 1: Parse the file with appropriate parser
             logger.info("Step 1: Parsing file with enhanced parsers...")
             parse_result = await self._parse_file_enhanced(path)
@@ -220,8 +246,8 @@ class EnhancedBookProcessor:
             # Store chunks in SQLite
             await self.sqlite_storage.save_chunks(chunks)
             
-            # Store embeddings in ChromaDB
-            success = await self.chroma_storage.save_embeddings(chunks, embeddings)
+            # Store embeddings in Qdrant
+            success = await self.vector_storage.save_embeddings(chunks, embeddings)
             
             if not success:
                 logger.error("Failed to save embeddings")
@@ -283,6 +309,21 @@ class EnhancedBookProcessor:
                 'success': False,
                 'error': f'Processing failed: {str(e)}'
             }
+        
+        finally:
+            # Stop resource monitoring and get summary
+            await self.resource_monitor.stop_monitoring()
+            
+            # Log resource usage summary
+            try:
+                summary = self.resource_monitor.get_usage_summary()
+                logger.info(f"Resource usage summary: {summary}")
+                
+                if summary.get('peak_memory_exceeded'):
+                    logger.warning("Peak memory usage exceeded limits during processing")
+                    
+            except Exception as e:
+                logger.debug(f"Could not generate resource summary: {e}")
     
     async def remove_book(self, book_id: str) -> Dict[str, Any]:
         """Remove a book and all its data"""
@@ -298,7 +339,7 @@ class EnhancedBookProcessor:
             
             # Delete from vector storage
             if chunk_ids:
-                await self.chroma_storage.delete_embeddings(chunk_ids)
+                await self.vector_storage.delete_embeddings(chunk_ids)
             
             # Delete from SQLite (cascades to chunks)
             await self.sqlite_storage.delete_book(book_id)
@@ -561,25 +602,77 @@ class EnhancedBookProcessor:
         return chunks
     
     async def _generate_embeddings_cached(self, chunks: List[Chunk]) -> List[List[float]]:
-        """Generate embeddings with caching"""
+        """Generate embeddings with caching and batching"""
         embeddings = []
+        uncached_chunks = []
+        uncached_indices = []
         
-        for chunk in chunks:
-            # Check cache first
+        logger.info(f"Processing embeddings for {len(chunks)} chunks...")
+        
+        # First pass: check cache for all chunks
+        for i, chunk in enumerate(chunks):
             cache_key = f"embedding:{hashlib.md5(chunk.text.encode()).hexdigest()}"
             cached_embedding = await self.cache_manager.get(cache_key, 'embedding')
             
             if cached_embedding:
                 embeddings.append(cached_embedding)
             else:
-                # Generate new embedding
-                chunk_embeddings = await self.embedding_generator.generate_embeddings([chunk])
-                embedding = chunk_embeddings[0]
-                embeddings.append(embedding)
-                
-                # Cache for 7 days
-                await self.cache_manager.set(cache_key, embedding, 'embedding', ttl=604800)
+                embeddings.append(None)  # Placeholder
+                uncached_chunks.append(chunk)
+                uncached_indices.append(i)
         
+        if uncached_chunks:
+            logger.info(f"Generating embeddings for {len(uncached_chunks)} uncached chunks...")
+            
+            # Get dynamic batch size based on available memory
+            recommendations = self.resource_monitor.get_processing_recommendations()
+            EMBEDDING_BATCH_SIZE = recommendations['embedding_batch_size']
+            
+            logger.info(f"Using dynamic batch size: {EMBEDDING_BATCH_SIZE} (memory status: {recommendations['memory_status']})")
+            
+            for batch_start in range(0, len(uncached_chunks), EMBEDDING_BATCH_SIZE):
+                batch_end = min(batch_start + EMBEDDING_BATCH_SIZE, len(uncached_chunks))
+                batch_chunks = uncached_chunks[batch_start:batch_end]
+                
+                logger.debug(f"Processing embedding batch {batch_start + 1}-{batch_end}")
+                
+                # Generate embeddings for this batch
+                batch_embeddings = await self.embedding_generator.generate_embeddings(batch_chunks)
+                
+                # Cache and store results
+                for j, (chunk, embedding) in enumerate(zip(batch_chunks, batch_embeddings)):
+                    original_index = uncached_indices[batch_start + j]
+                    embeddings[original_index] = embedding
+                    
+                    # Cache for 7 days
+                    cache_key = f"embedding:{hashlib.md5(chunk.text.encode()).hexdigest()}"
+                    await self.cache_manager.set(cache_key, embedding, 'embedding', ttl=604800)
+                
+                # Update status
+                if self.current_status:
+                    processed = batch_end
+                    total = len(uncached_chunks)
+                    self.current_status.progress_percent = (processed / total) * 100
+                
+                # Check if we need to pause between batches
+                if recommendations['pause_between_batches']:
+                    await asyncio.sleep(1)  # Brief pause to let system recover
+                
+                # Force garbage collection after each batch
+                import gc
+                if recommendations['enable_aggressive_gc']:
+                    gc.collect()
+                
+                # Check memory status and adjust if needed
+                check = self.resource_monitor.check_memory_limits()
+                if check['memory_critical']:
+                    logger.warning("Memory critical during embedding generation - waiting...")
+                    await self.resource_monitor.wait_for_memory_available()
+                
+                if batch_end % 100 == 0:  # Log progress every 100 embeddings
+                    logger.info(f"Generated {batch_end}/{len(uncached_chunks)} embeddings (Memory: {self.resource_monitor.current_memory_percent:.1f}%)")
+        
+        logger.info(f"Embedding generation complete. Cache hit rate: {(len(chunks) - len(uncached_chunks)) / len(chunks) * 100:.1f}%")
         return embeddings
     
     async def _update_search_suggestions(self, book: Book, content_analysis: Dict[str, Any]):

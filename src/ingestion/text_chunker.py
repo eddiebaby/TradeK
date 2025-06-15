@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from core.models import Chunk, ChunkType
+from ..core.models import Chunk, ChunkType
 
 logger = logging.getLogger(__name__)
 

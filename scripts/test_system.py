@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Import our components
 from core.models import Book, Chunk, FileType, ChunkType
 from core.sqlite_storage import SQLiteStorage
-from core.chroma_storage import ChromaDBStorage
+from core.qdrant_storage import QdrantStorage
 from ingestion.pdf_parser import PDFParser
 from ingestion.text_chunker import TextChunker, ChunkingConfig
 from ingestion.embeddings import EmbeddingGenerator
@@ -151,13 +151,13 @@ class SystemTestRunner:
         except Exception as e:
             self.log_test("SQLite storage", False, str(e))
     
-    async def test_chroma_storage(self):
-        """Test ChromaDB storage"""
-        print("\n🔍 Testing ChromaDB Vector Storage")
+    async def test_qdrant_storage(self):
+        """Test Qdrant vector storage"""
+        print("\n🔍 Testing Qdrant Vector Storage")
         print("-" * 50)
         
         try:
-            storage = ChromaDBStorage("data/test_chroma", "test_collection")
+            storage = QdrantStorage("test_collection")
             
             # Create test chunks
             chunks = [
@@ -170,29 +170,29 @@ class SystemTestRunner:
                 for i in range(3)
             ]
             
-            # Create fake embeddings
+            # Create fake embeddings (Qdrant expects 768 dimensions by default)
             import random
             embeddings = [
-                [random.random() for _ in range(384)]
+                [random.random() for _ in range(768)]
                 for _ in chunks
             ]
             
             # Save embeddings
             success = await storage.save_embeddings(chunks, embeddings)
-            self.log_test("Save embeddings to ChromaDB", success)
+            self.log_test("Save embeddings to Qdrant", success)
             
             # Test search
-            query_embedding = [random.random() for _ in range(384)]
+            query_embedding = [random.random() for _ in range(768)]
             results = await storage.search_semantic(query_embedding, limit=2)
-            self.log_test("ChromaDB semantic search", len(results) > 0)
+            self.log_test("Qdrant semantic search", len(results) > 0)
             
             # Get stats
             stats = await storage.get_collection_stats()
-            self.log_test("ChromaDB collection stats", 
+            self.log_test("Qdrant collection stats", 
                          stats.get('total_embeddings', 0) >= len(chunks))
             
         except Exception as e:
-            self.log_test("ChromaDB storage", False, str(e))
+            self.log_test("Qdrant storage", False, str(e))
     
     async def test_text_chunker(self):
         """Test text chunking"""
@@ -345,7 +345,7 @@ class SystemTestRunner:
         # Run all test suites
         await self.test_core_models()
         await self.test_sqlite_storage()
-        await self.test_chroma_storage()
+        await self.test_qdrant_storage()
         await self.test_text_chunker()
         await self.test_embeddings()
         await self.test_hybrid_search()

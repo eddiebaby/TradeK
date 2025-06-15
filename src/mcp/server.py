@@ -36,9 +36,9 @@ except ImportError:
             print(f"Mock MCP server {self.name} v{self.version} running...")
             print(f"Available tools: {[t['name'] for t in self.tools]}")
 
-from core.config import get_config
-from search.hybrid_search import HybridSearch
-from ingestion.ingestion_engine import IngestionEngine
+from ..core.config import get_config
+from ..search.hybrid_search import HybridSearch
+from ..ingestion.ingestion_engine import IngestionEngine
 
 logger = logging.getLogger(__name__)
 

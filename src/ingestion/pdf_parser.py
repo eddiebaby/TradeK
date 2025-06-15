@@ -17,7 +17,8 @@ from PyPDF2 import PdfReader
 from PyPDF2.errors import PdfReadError
 import asyncio
 
-from core.models import Book, FileType
+from ..core.models import Book, FileType
+from .resource_monitor import get_resource_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +199,7 @@ class PDFParser:
     
     def _parse_with_pypdf2(self, file_path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
-        Parse PDF using PyPDF2 library.
+        Parse PDF using PyPDF2 library with memory optimization.
         
         PyPDF2 is fast but sometimes struggles with complex layouts.
         We use it as our primary parser for clean PDFs.
@@ -206,54 +207,83 @@ class PDFParser:
         metadata = {}
         pages = []
         
-        with open(file_path, 'rb') as file:
-            reader = PdfReader(file)
-            
-            # Extract metadata
-            if reader.metadata:
-                metadata = {
-                    'title': self._clean_text(reader.metadata.get('/Title', '')),
-                    'author': self._clean_text(reader.metadata.get('/Author', '')),
-                    'subject': self._clean_text(reader.metadata.get('/Subject', '')),
-                    'creator': self._clean_text(reader.metadata.get('/Creator', '')),
-                    'producer': self._clean_text(reader.metadata.get('/Producer', '')),
-                    'creation_date': self._parse_date(reader.metadata.get('/CreationDate')),
-                    'modification_date': self._parse_date(reader.metadata.get('/ModDate')),
-                }
-            
-            # Extract text from each page
-            total_pages = len(reader.pages)
-            metadata['total_pages'] = total_pages
-            
-            for page_num, page in enumerate(reader.pages, 1):
-                try:
-                    text = page.extract_text()
+        # Get dynamic batch size based on available memory
+        resource_monitor = get_resource_monitor()
+        recommendations = resource_monitor.get_processing_recommendations()
+        BATCH_SIZE = recommendations['pdf_batch_size']
+        
+        try:
+            with open(file_path, 'rb') as file:
+                reader = PdfReader(file)
+                
+                # Extract metadata first
+                if reader.metadata:
+                    metadata = {
+                        'title': self._clean_text(reader.metadata.get('/Title', '')),
+                        'author': self._clean_text(reader.metadata.get('/Author', '')),
+                        'subject': self._clean_text(reader.metadata.get('/Subject', '')),
+                        'creator': self._clean_text(reader.metadata.get('/Creator', '')),
+                        'producer': self._clean_text(reader.metadata.get('/Producer', '')),
+                        'creation_date': self._parse_date(reader.metadata.get('/CreationDate')),
+                        'modification_date': self._parse_date(reader.metadata.get('/ModDate')),
+                    }
+                
+                # Get total page count
+                total_pages = len(reader.pages)
+                metadata['total_pages'] = total_pages
+                
+                logger.info(f"Processing {total_pages} pages in batches of {BATCH_SIZE}")
+                
+                # Process pages in batches to manage memory
+                for batch_start in range(0, total_pages, BATCH_SIZE):
+                    batch_end = min(batch_start + BATCH_SIZE, total_pages)
+                    logger.debug(f"Processing pages {batch_start + 1}-{batch_end}")
                     
-                    # Clean up the text
-                    text = self._clean_text(text)
+                    # Process this batch
+                    for page_num in range(batch_start, batch_end):
+                        try:
+                            page = reader.pages[page_num]
+                            text = page.extract_text()
+                            
+                            # Clean up the text
+                            text = self._clean_text(text)
+                            
+                            pages.append({
+                                'page_number': page_num + 1,
+                                'text': text,
+                                'word_count': len(text.split()),
+                                'char_count': len(text)
+                            })
+                            
+                            # Clear page reference to help with memory
+                            del page
+                            
+                        except Exception as e:
+                            logger.warning(f"Error extracting page {page_num + 1}: {e}")
+                            pages.append({
+                                'page_number': page_num + 1,
+                                'text': '',
+                                'word_count': 0,
+                                'char_count': 0,
+                                'error': str(e)
+                            })
                     
-                    pages.append({
-                        'page_number': page_num,
-                        'text': text,
-                        'word_count': len(text.split()),
-                        'char_count': len(text)
-                    })
+                    # Force garbage collection after each batch
+                    import gc
+                    gc.collect()
                     
-                except Exception as e:
-                    logger.warning(f"Error extracting page {page_num}: {e}")
-                    pages.append({
-                        'page_number': page_num,
-                        'text': '',
-                        'word_count': 0,
-                        'char_count': 0,
-                        'error': str(e)
-                    })
+                    if len(pages) % 50 == 0:  # Log progress every 50 pages
+                        logger.info(f"Processed {len(pages)}/{total_pages} pages")
+                
+        except Exception as e:
+            logger.error(f"Critical error in PyPDF2 parsing: {e}")
+            raise
         
         return metadata, pages
     
     def _parse_with_pdfplumber(self, file_path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
-        Parse PDF using pdfplumber library.
+        Parse PDF using pdfplumber library with memory optimization.
         
         Pdfplumber is better at handling complex layouts and tables,
         but is slower than PyPDF2.
@@ -261,53 +291,85 @@ class PDFParser:
         metadata = {}
         pages = []
         
-        with pdfplumber.open(file_path) as pdf:
-            # Extract metadata
-            if pdf.metadata:
-                metadata = {
-                    'title': self._clean_text(pdf.metadata.get('Title', '')),
-                    'author': self._clean_text(pdf.metadata.get('Author', '')),
-                    'subject': self._clean_text(pdf.metadata.get('Subject', '')),
-                    'creator': self._clean_text(pdf.metadata.get('Creator', '')),
-                    'producer': self._clean_text(pdf.metadata.get('Producer', '')),
-                }
-            
-            metadata['total_pages'] = len(pdf.pages)
-            
-            # Extract text from each page
-            for page_num, page in enumerate(pdf.pages, 1):
-                try:
-                    # Extract text
-                    text = page.extract_text() or ''
+        # Get dynamic batch size based on available memory
+        resource_monitor = get_resource_monitor()
+        recommendations = resource_monitor.get_processing_recommendations()
+        BATCH_SIZE = max(5, recommendations['pdf_batch_size'] // 2)  # Smaller for pdfplumber
+        
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                # Extract metadata first
+                if pdf.metadata:
+                    metadata = {
+                        'title': self._clean_text(pdf.metadata.get('Title', '')),
+                        'author': self._clean_text(pdf.metadata.get('Author', '')),
+                        'subject': self._clean_text(pdf.metadata.get('Subject', '')),
+                        'creator': self._clean_text(pdf.metadata.get('Creator', '')),
+                        'producer': self._clean_text(pdf.metadata.get('Producer', '')),
+                    }
+                
+                total_pages = len(pdf.pages)
+                metadata['total_pages'] = total_pages
+                
+                logger.info(f"Processing {total_pages} pages with pdfplumber in batches of {BATCH_SIZE}")
+                
+                # Process pages in batches to manage memory
+                for batch_start in range(0, total_pages, BATCH_SIZE):
+                    batch_end = min(batch_start + BATCH_SIZE, total_pages)
+                    logger.debug(f"Processing pages {batch_start + 1}-{batch_end} with pdfplumber")
                     
-                    # Also try to extract tables
-                    tables = page.extract_tables()
-                    if tables:
-                        # Convert tables to text representation
-                        for table in tables:
-                            table_text = self._table_to_text(table)
-                            text += f"\n\n[TABLE]\n{table_text}\n[/TABLE]\n"
+                    # Process this batch
+                    for page_num in range(batch_start, batch_end):
+                        try:
+                            page = pdf.pages[page_num]
+                            
+                            # Extract text
+                            text = page.extract_text() or ''
+                            
+                            # Also try to extract tables (if text is sparse)
+                            tables = []
+                            if len(text.strip()) < 100:  # Only extract tables if text is sparse
+                                try:
+                                    tables = page.extract_tables()
+                                    if tables:
+                                        # Convert tables to text representation
+                                        for table in tables:
+                                            table_text = self._table_to_text(table)
+                                            text += f"\n\n[TABLE]\n{table_text}\n[/TABLE]\n"
+                                except Exception as e:
+                                    logger.debug(f"Table extraction failed for page {page_num + 1}: {e}")
+                            
+                            # Clean up the text
+                            text = self._clean_text(text)
+                            
+                            pages.append({
+                                'page_number': page_num + 1,
+                                'text': text,
+                                'word_count': len(text.split()),
+                                'char_count': len(text),
+                                'has_tables': len(tables) > 0 if tables else False
+                            })
+                            
+                        except Exception as e:
+                            logger.warning(f"Error extracting page {page_num + 1} with pdfplumber: {e}")
+                            pages.append({
+                                'page_number': page_num + 1,
+                                'text': '',
+                                'word_count': 0,
+                                'char_count': 0,
+                                'error': str(e)
+                            })
                     
-                    # Clean up the text
-                    text = self._clean_text(text)
+                    # Force garbage collection after each batch
+                    import gc
+                    gc.collect()
                     
-                    pages.append({
-                        'page_number': page_num,
-                        'text': text,
-                        'word_count': len(text.split()),
-                        'char_count': len(text),
-                        'has_tables': len(tables) > 0 if tables else False
-                    })
-                    
-                except Exception as e:
-                    logger.warning(f"Error extracting page {page_num} with pdfplumber: {e}")
-                    pages.append({
-                        'page_number': page_num,
-                        'text': '',
-                        'word_count': 0,
-                        'char_count': 0,
-                        'error': str(e)
-                    })
+                    if len(pages) % 25 == 0:  # Log progress every 25 pages
+                        logger.info(f"Processed {len(pages)}/{total_pages} pages with pdfplumber")
+                
+        except Exception as e:
+            logger.error(f"Critical error in pdfplumber parsing: {e}")
+            raise
         
         return metadata, pages
     

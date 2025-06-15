@@ -47,6 +47,18 @@ class Book(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     indexed_at: Optional[datetime] = Field(default=None)
     
+    @field_validator('file_path')
+    @classmethod
+    def validate_file_path(cls, file_path: str) -> str:
+        """Validate file path to prevent security issues"""
+        if not file_path:
+            raise ValueError("File path cannot be empty")
+        
+        # Security validation - this will raise ValueError if path is malicious
+        cls._validate_file_path(file_path)
+        
+        return file_path
+    
     @model_validator(mode='before')
     def generate_file_hash(cls, values):
         """Generate file hash if not provided"""
@@ -55,10 +67,17 @@ class Book(BaseModel):
                 file_path = values.get('file_path')
                 if file_path:
                     try:
-                        # Validate and resolve file path to prevent path traversal
+                        # Path is already validated by field validator, so this is safe
                         safe_path = Path(file_path).resolve()
+                        
                         if safe_path.exists() and safe_path.is_file():
-                            # Read file in chunks to handle large files
+                            # Additional security: Check file size limits (500MB max)
+                            file_size = safe_path.stat().st_size
+                            max_size = 500 * 1024 * 1024  # 500MB
+                            if file_size > max_size:
+                                raise ValueError(f"File too large: {file_size} bytes (max: {max_size})")
+                            
+                            # Read file in chunks to handle large files securely
                             sha256_hash = hashlib.sha256()
                             with open(safe_path, "rb") as f:
                                 for byte_block in iter(lambda: f.read(4096), b""):
@@ -71,6 +90,72 @@ class Book(BaseModel):
                 else:
                     values['file_hash'] = 'unknown'
         return values
+    
+    @classmethod
+    def _validate_file_path(cls, file_path: str) -> Path:
+        """
+        Validate file path to prevent directory traversal attacks.
+        
+        Args:
+            file_path: The file path to validate
+            
+        Returns:
+            Path: Validated and resolved path
+            
+        Raises:
+            ValueError: If path is invalid or outside allowed directories
+        """
+        try:
+            # Check for suspicious patterns in the original path first
+            suspicious_patterns = ['..', '~', '$', '`', ';', '|', '&']
+            if any(pattern in file_path for pattern in suspicious_patterns):
+                raise ValueError(f"File path contains suspicious characters: {file_path}")
+            
+            # Convert to Path and resolve to absolute path
+            path = Path(file_path).resolve()
+            
+            # Define allowed base directories for book files
+            project_root = Path.cwd()
+            allowed_directories = [
+                project_root / "data" / "books",
+                project_root / "data" / "uploads", 
+                project_root / "test_data",
+                Path("/tmp"),  # Allow temp directory for testing
+            ]
+            
+            # Ensure all allowed directories exist or create them
+            for allowed_dir in allowed_directories[:3]:  # Skip /tmp
+                allowed_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Check if the path is within any allowed directory
+            is_allowed = False
+            for allowed_dir in allowed_directories:
+                try:
+                    allowed_dir = allowed_dir.resolve()
+                    # Check if path is within allowed directory
+                    path.relative_to(allowed_dir)
+                    is_allowed = True
+                    break
+                except ValueError:
+                    # Path is not relative to this allowed directory
+                    continue
+            
+            if not is_allowed:
+                raise ValueError(
+                    f"File path '{file_path}' is outside allowed directories. "
+                    f"Allowed directories: {[str(d) for d in allowed_directories]}"
+                )
+            
+            # Additional security checks for symlinks
+            if path.is_symlink():
+                # Resolve symlink and re-validate the target
+                resolved_target = path.readlink().resolve()
+                return cls._validate_file_path(str(resolved_target))
+            
+            return path
+            
+        except (OSError, RuntimeError) as e:
+            raise ValueError(f"Invalid file path '{file_path}': {e}") from e
     
     model_config = {
         "json_encoders": {
@@ -214,7 +299,7 @@ if __name__ == "__main__":
         id="978-0-123456-78-9",
         title="Algorithmic Trading with Python",
         author="John Doe",
-        file_path="/data/books/algo_trading.pdf",
+        file_path="data/books/algo_trading.pdf",  # FIXED: Use relative path
         file_type=FileType.PDF,
         categories=["trading", "python", "finance"]
     )
