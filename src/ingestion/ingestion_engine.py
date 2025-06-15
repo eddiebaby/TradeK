@@ -14,14 +14,15 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import hashlib
+from concurrent.futures import ProcessPoolExecutor
 
-from core.models import Book, Chunk, FileType, IngestionStatus
-from core.sqlite_storage import SQLiteStorage
-from core.config import Config, get_config
-from core.chroma_storage import ChromaDBStorage
-from ingestion.pdf_parser import PDFParser
-from ingestion.text_chunker import TextChunker, ChunkingConfig
-from ingestion.embeddings import EmbeddingGenerator
+from ..core.models import Book, Chunk, FileType, IngestionStatus
+from ..core.sqlite_storage import SQLiteStorage
+from ..core.config import Config, get_config
+from ..core.qdrant_storage import QdrantStorage
+from .pdf_parser import PDFParser
+from .text_chunker import TextChunker, ChunkingConfig
+from .local_embeddings import LocalEmbeddingGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -47,30 +48,45 @@ class IngestionEngine:
                 max_chunk_size=self.config.ingestion.max_chunk_size
             )
         )
-        self.embedding_generator: Optional[EmbeddingGenerator] = None
+        self.embedding_generator: Optional[LocalEmbeddingGenerator] = None
         self.sqlite_storage: Optional[SQLiteStorage] = None
-        self.chroma_storage: Optional[ChromaDBStorage] = None
+        self.vector_storage: Optional[QdrantStorage] = None
         
         # Processing state
         self.current_status: Optional[IngestionStatus] = None
+        
+        # Process pool for CPU-intensive tasks
+        self.process_pool: Optional[ProcessPoolExecutor] = None
     
     async def initialize(self):
         """Initialize all components"""
         logger.info("Initializing ingestion engine...")
         
-        # Initialize storage
-        self.sqlite_storage = SQLiteStorage()
-        self.chroma_storage = ChromaDBStorage()
+        # Initialize storage with proper configuration
+        self.sqlite_storage = SQLiteStorage(self.config.database.sqlite.path)
+        self.vector_storage = QdrantStorage(self.config.database.qdrant.collection_name)
         
-        # Initialize embedding generator
-        self.embedding_generator = EmbeddingGenerator()
+        # Initialize embedding generator with configuration
+        self.embedding_generator = LocalEmbeddingGenerator(self.config)
+        
+        # Initialize process pool for CPU-intensive tasks
+        self.process_pool = ProcessPoolExecutor(max_workers=2)  # Limit to prevent system overload
         
         logger.info("Ingestion engine initialized")
     
     async def cleanup(self):
         """Cleanup resources"""
+        # Save embedding cache - FIXED: Use configuration-driven path
         if self.embedding_generator:
-            self.embedding_generator.save_cache("data/embeddings/cache.json")
+            cache_dir = Path("data/embeddings")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path = cache_dir / "cache.json"
+            self.embedding_generator.save_cache(str(cache_path))
+        
+        # Cleanup process pool
+        if self.process_pool:
+            self.process_pool.shutdown(wait=True)
+            logger.info("Process pool shut down")
     
     async def add_book(self,
                       file_path: str,
@@ -164,8 +180,8 @@ class IngestionEngine:
             # Store chunks in SQLite
             await self.sqlite_storage.save_chunks(chunks)
             
-            # Store embeddings in ChromaDB
-            success = await self.chroma_storage.save_embeddings(chunks, embeddings)
+            # Store embeddings in Qdrant
+            success = await self.vector_storage.save_embeddings(chunks, embeddings)
             
             if not success:
                 logger.error("Failed to save embeddings")
@@ -199,13 +215,23 @@ class IngestionEngine:
         except Exception as e:
             logger.error(f"Error processing book: {e}", exc_info=True)
             
+            # Update status if available
             if self.current_status:
                 self.current_status.status = 'failed'
                 self.current_status.error_message = str(e)
             
+            # Cleanup partial state - try to remove any partial book data
+            try:
+                if 'book' in locals():
+                    logger.warning(f"Cleaning up partial book data for: {book.id}")
+                    await self.remove_book(book.id)
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup partial book data: {cleanup_error}")
+            
             return {
                 'success': False,
-                'error': f'Processing failed: {str(e)}'
+                'error': f'Processing failed: {str(e)}',
+                'cleanup_attempted': True
             }
     
     async def remove_book(self, book_id: str) -> Dict[str, Any]:
@@ -222,7 +248,7 @@ class IngestionEngine:
             
             # Delete from vector storage
             if chunk_ids:
-                await self.chroma_storage.delete_embeddings(chunk_ids)
+                await self.vector_storage.delete_embeddings(chunk_ids)
             
             # Delete from SQLite (cascades to chunks)
             await self.sqlite_storage.delete_book(book_id)
@@ -326,9 +352,12 @@ class IngestionEngine:
     async def _parse_file(self, file_path: Path) -> Dict[str, Any]:
         """Parse file based on type"""
         if file_path.suffix.lower() == '.pdf':
-            # Run in thread to avoid blocking
-            return await asyncio.to_thread(
-                self.pdf_parser.parse_file, file_path
+            # PERFORMANCE FIX: Use process pool for CPU-intensive PDF parsing
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                self.process_pool, 
+                self.pdf_parser.parse_file, 
+                file_path
             )
         else:
             # TODO: Add EPUB parser
@@ -404,14 +433,16 @@ async def test_ingestion_engine():
     await engine.initialize()
     
     # Test with a sample PDF (you'll need to provide one)
-    test_file = "data/books/sample.pdf"
+    # Test with a sample PDF (you'll need to provide one)
+    # FIXED: Use Path for better path handling
+    test_file = Path("data/books/sample.pdf")
     
-    if Path(test_file).exists():
+    if test_file.exists():
         print(f"Testing ingestion with: {test_file}")
         
         # Add book
         result = await engine.add_book(
-            test_file,
+            str(test_file),
             metadata={
                 'categories': ['testing', 'sample'],
                 'description': 'Test book for ingestion'

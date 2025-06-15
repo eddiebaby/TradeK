@@ -465,7 +465,7 @@ class TestSemanticSearch:
             assert results[0]['chunk_id'] == 'chunk_1'
             assert results[0]['text'] == 'First result text'
             assert results[0]['score'] == 0.95
-            assert results[0]['distance'] == 0.05  # 1 - score
+            assert abs(results[0]['distance'] - 0.05) < 1e-10  # 1 - score (allow for floating point precision)
             assert 'book_id' in results[0]['metadata']
             
             # Check second result
@@ -509,6 +509,8 @@ class TestSemanticSearch:
             assert len(query_filter.must) == 1
             condition = query_filter.must[0]
             assert condition.key == "book_id"
+            # For multiple book IDs, should use MatchAny
+            assert hasattr(condition.match, 'any')
     
     @pytest.mark.asyncio
     async def test_search_semantic_with_chunk_type_filter(self):
@@ -708,7 +710,9 @@ class TestCollectionStats:
         mock_collection_info = Mock()
         mock_collection_info.points_count = 1500
         mock_collection_info.config.params.vectors.size = 768
-        mock_collection_info.config.params.vectors.distance.name = "COSINE"
+        mock_distance = Mock()
+        mock_distance.name = "COSINE"
+        mock_collection_info.config.params.vectors.distance = mock_distance
         mock_collection_info.segments_count = 3
         mock_collection_info.status = "green"
         

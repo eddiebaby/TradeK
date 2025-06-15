@@ -3,7 +3,7 @@ Configuration management for TradeKnowledge
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import yaml
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
@@ -68,11 +68,12 @@ class IngestionConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     """Embedding configuration for local setup"""
     model: str = Field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "nomic-embed-text"))
-    dimension: int = Field(default_factory=lambda: _safe_int(os.getenv("EMBEDDING_DIMENSION", "768"), 768))
+    dimension: int = Field(default_factory=lambda: _safe_int(os.getenv("EMBEDDING_DIMENSION", "384"), 384))
     batch_size: int = Field(default_factory=lambda: _safe_int(os.getenv("EMBEDDING_BATCH_SIZE", "32"), 32))
     ollama_host: str = Field(default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434"))
     timeout: int = Field(default_factory=lambda: _safe_int(os.getenv("OLLAMA_TIMEOUT", "30"), 30))
     cache_embeddings: bool = True
+    max_concurrent_requests: int = Field(default_factory=lambda: _safe_int(os.getenv("EMBEDDING_CONCURRENCY", "5"), 5))
     
     @field_validator('dimension')
     @classmethod
@@ -113,9 +114,32 @@ class PerformanceConfig(BaseModel):
     thread_pool_size: int = 8
     batch_processing: bool = True
 
+class AuthConfig(BaseModel):
+    """Authentication configuration"""
+    secret_key: str = Field(default_factory=lambda: os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production"))
+    algorithm: str = "HS256"
+    token_expiry_hours: int = Field(default_factory=lambda: _safe_int(os.getenv("JWT_EXPIRY_HOURS", "24"), 24))
+    enable_registration: bool = Field(default_factory=lambda: os.getenv("ENABLE_REGISTRATION", "false").lower() == "true")
+    min_password_length: int = 8
+    max_login_attempts: int = 5
+    lockout_duration_minutes: int = 15
+
+class ApiConfig(BaseModel):
+    """API server configuration"""
+    auth: AuthConfig = Field(default_factory=AuthConfig)
+    cors_origins: List[str] = Field(default_factory=lambda: os.getenv("CORS_ORIGINS", "*").split(","))
+    rate_limit_per_minute: int = Field(default_factory=lambda: _safe_int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"), 60))
+    max_file_size_mb: int = Field(default_factory=lambda: _safe_int(os.getenv("MAX_FILE_SIZE_MB", "100"), 100))
+    enable_docs: bool = Field(default_factory=lambda: os.getenv("ENABLE_API_DOCS", "true").lower() == "true")
+    docs_url: str = "/docs"
+    redoc_url: str = "/redoc"
+    request_timeout: int = Field(default_factory=lambda: _safe_int(os.getenv("REQUEST_TIMEOUT", "300"), 300))
+    max_concurrent_uploads: int = Field(default_factory=lambda: _safe_int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"), 3))
+
 class Config(BaseModel):
     app: AppConfig = Field(default_factory=AppConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    api: ApiConfig = Field(default_factory=ApiConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)

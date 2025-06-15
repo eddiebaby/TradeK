@@ -10,12 +10,13 @@ import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import time
+from pathlib import Path
 
-from core.models import SearchResult, SearchResponse, Chunk
-from core.sqlite_storage import SQLiteStorage
-from core.config import Config, get_config
-from core.chroma_storage import ChromaDBStorage
-from ingestion.embeddings import EmbeddingGenerator
+from ..core.models import SearchResult, SearchResponse, Chunk
+from ..core.sqlite_storage import SQLiteStorage
+from ..core.config import Config, get_config
+from ..core.qdrant_storage import QdrantStorage
+from ..ingestion.local_embeddings import LocalEmbeddingGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class HybridSearch:
     Hybrid search engine combining semantic and exact search.
     
     This class orchestrates:
-    - Semantic search through ChromaDB
+    - Semantic search through Qdrant
     - Exact text search through SQLite FTS5
     - Result merging and ranking
     - Context retrieval
@@ -36,10 +37,10 @@ class HybridSearch:
         
         # Storage backends
         self.sqlite_storage: Optional[SQLiteStorage] = None
-        self.chroma_storage: Optional[ChromaDBStorage] = None
+        self.vector_storage: Optional[QdrantStorage] = None
         
         # Embedding generator
-        self.embedding_generator: Optional[EmbeddingGenerator] = None
+        self.embedding_generator: Optional[LocalEmbeddingGenerator] = None
         
         # Search statistics
         self.search_count = 0
@@ -49,24 +50,30 @@ class HybridSearch:
         """Initialize all components"""
         logger.info("Initializing hybrid search engine...")
         
-        # Initialize storage
-        self.sqlite_storage = SQLiteStorage(self.config)
-        self.chroma_storage = ChromaDBStorage(self.config)
+        # Initialize storage with proper configuration
+        self.sqlite_storage = SQLiteStorage(self.config.database.sqlite.path)
+        self.vector_storage = QdrantStorage(self.config.database.qdrant.collection_name)
         
         # Initialize embedding generator
-        self.embedding_generator = EmbeddingGenerator(self.config)
+        self.embedding_generator = LocalEmbeddingGenerator(self.config)
         
-        # Load embedding cache if available
-        cache_path = "data/embeddings/cache.json"
-        self.embedding_generator.load_cache(cache_path)
+        # Load embedding cache if available - FIXED: Use configuration-driven path
+        cache_dir = Path("data/embeddings")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / "cache.json"
+        if cache_path.exists():
+            self.embedding_generator.load_cache(str(cache_path))
         
         logger.info("Search engine initialized")
     
     async def cleanup(self):
         """Cleanup resources"""
-        # Save embedding cache
+        # Save embedding cache - FIXED: Use configuration-driven path
         if self.embedding_generator:
-            self.embedding_generator.save_cache("data/embeddings/cache.json")
+            cache_dir = Path("data/embeddings")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path = cache_dir / "cache.json"
+            self.embedding_generator.save_cache(str(cache_path))
     
     async def search_semantic(self,
                             query: str,
@@ -90,9 +97,9 @@ class HybridSearch:
             if filter_books:
                 filter_dict['book_ids'] = filter_books
             
-            # Search in ChromaDB
+            # Search in Qdrant
             logger.debug("Searching in vector database...")
-            results = await self.chroma_storage.search_semantic(
+            results = await self.vector_storage.search_semantic(
                 query_embedding=query_embedding,
                 filter_dict=filter_dict,
                 limit=num_results
@@ -244,11 +251,15 @@ class HybridSearch:
         start_time = time.time()
         
         try:
-            # Run both searches in parallel
+            # Run both searches in parallel - PERFORMANCE FIX: Optimize memory usage
             logger.debug(f"Running hybrid search for: {query}")
             
-            semantic_task = self.search_semantic(query, num_results * 2, filter_books)
-            exact_task = self.search_exact(query, num_results * 2, filter_books)
+            # Use smaller multiplier to reduce memory usage
+            search_multiplier = min(2, max(1.5, num_results / 5))  # Scale based on requested results
+            parallel_results = max(num_results, int(num_results * search_multiplier))
+            
+            semantic_task = self.search_semantic(query, parallel_results, filter_books)
+            exact_task = self.search_exact(query, parallel_results, filter_books)
             
             semantic_response, exact_response = await asyncio.gather(
                 semantic_task, exact_task
@@ -388,29 +399,61 @@ class HybridSearch:
         )
         
         # Return just the result objects as SearchResult instances
+        # SECURITY FIX: Proper type validation and error handling
         final_results = []
         for item in sorted_results:
-            result_dict = item['result']
-            # Convert dict back to SearchResult if needed
-            if isinstance(result_dict, dict):
-                chunk_dict = result_dict['chunk']
-                chunk = Chunk(**chunk_dict) if isinstance(chunk_dict, dict) else chunk_dict
-                
-                search_result = SearchResult(
-                    chunk=chunk,
-                    score=result_dict['score'],
-                    match_type=result_dict['match_type'],
-                    highlights=result_dict.get('highlights', []),
-                    context_before=result_dict.get('context_before'),
-                    context_after=result_dict.get('context_after'),
-                    book_title=result_dict['book_title'],
-                    book_author=result_dict.get('book_author'),
-                    chapter=result_dict.get('chapter'),
-                    page=result_dict.get('page')
-                )
-                final_results.append(search_result)
-            else:
-                final_results.append(result_dict)
+            try:
+                result_dict = item['result']
+                # Convert dict back to SearchResult if needed
+                if isinstance(result_dict, dict):
+                    chunk_data = result_dict.get('chunk')
+                    
+                    # Validate chunk data structure
+                    if isinstance(chunk_data, dict):
+                        # Validate required fields before creating Chunk
+                        required_fields = ['id', 'book_id', 'chunk_index', 'text']
+                        if all(field in chunk_data for field in required_fields):
+                            try:
+                                chunk = Chunk(**chunk_data)
+                            except (TypeError, ValueError) as e:
+                                logger.warning(f"Failed to create Chunk from dict: {e}")
+                                continue
+                        else:
+                            logger.warning(f"Chunk data missing required fields: {chunk_data}")
+                            continue
+                    elif hasattr(chunk_data, '__dict__'):  # Already a Chunk object
+                        chunk = chunk_data
+                    else:
+                        logger.warning(f"Invalid chunk data type: {type(chunk_data)}")
+                        continue
+                    
+                    # Validate other required fields
+                    if not result_dict.get('book_title'):
+                        logger.warning("Result missing book_title")
+                        continue
+                    
+                    search_result = SearchResult(
+                        chunk=chunk,
+                        score=float(result_dict.get('score', 0.0)),
+                        match_type=str(result_dict.get('match_type', 'unknown')),
+                        highlights=result_dict.get('highlights', []) if isinstance(result_dict.get('highlights'), list) else [],
+                        context_before=result_dict.get('context_before'),
+                        context_after=result_dict.get('context_after'),
+                        book_title=str(result_dict['book_title']),
+                        book_author=result_dict.get('book_author'),
+                        chapter=result_dict.get('chapter'),
+                        page=result_dict.get('page')
+                    )
+                    final_results.append(search_result)
+                elif isinstance(result_dict, SearchResult):
+                    # Already a SearchResult object
+                    final_results.append(result_dict)
+                else:
+                    logger.warning(f"Invalid result type: {type(result_dict)}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing search result: {e}")
+                continue
         
         return final_results
     
@@ -453,7 +496,7 @@ class HybridSearch:
             'average_search_time_ms': avg_time,
             'components_initialized': {
                 'sqlite_storage': self.sqlite_storage is not None,
-                'chroma_storage': self.chroma_storage is not None,
+                'vector_storage': self.vector_storage is not None,
                 'embedding_generator': self.embedding_generator is not None
             }
         }

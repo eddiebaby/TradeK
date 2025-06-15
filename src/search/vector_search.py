@@ -13,9 +13,9 @@ import chromadb
 from chromadb.config import Settings
 from chromadb.api.models.Collection import Collection
 
-from utils.logging import get_logger
-from core.config import get_config
-from ingestion.embeddings import EmbeddingGenerator
+from ..utils.logging import get_logger
+from ..core.config import get_config
+from ..ingestion.local_embeddings import LocalEmbeddingGenerator
 
 logger = get_logger(__name__)
 
@@ -70,7 +70,7 @@ class VectorSearchEngine:
                 logger.info(f"Created new collection: {self.collection_name}")
             
             # Initialize embedding generator
-            self.embedding_generator = EmbeddingGenerator()
+            self.embedding_generator = LocalEmbeddingGenerator()
             
             logger.info(f"Vector search engine initialized with {self.collection.count()} documents")
             

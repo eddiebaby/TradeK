@@ -26,7 +26,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         # generator = EmbeddingGenerator("text-embedding-ada-002")
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient'):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             assert generator.model_name == "nomic-embed-text"
             assert hasattr(generator, 'embedding_dimension')
@@ -66,7 +66,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         mock_client.post = AsyncMock(side_effect=mock_embedding_response)
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             embeddings = await generator.generate_embeddings(test_chunks)
             
@@ -86,7 +86,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         ))
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             # This mimics: query_embedding = await generator.generate_query_embedding("trading strategies")
             query_embedding = await generator.generate_query_embedding("trading strategies")
@@ -98,7 +98,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
     def test_get_stats_compatibility(self):
         """Test stats reporting like in system test"""
         with patch('ingestion.local_embeddings.httpx.AsyncClient'):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             # Add some mock cache data
             generator.cache = {"key1": [0.1] * 768, "key2": [0.2] * 768}
@@ -127,7 +127,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         ))
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             # First call should generate embedding
             chunk = Chunk(book_id="test", chunk_index=0, text="test text")
@@ -152,7 +152,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         mock_client.post = AsyncMock(side_effect=Exception("Network error"))
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             chunk = Chunk(book_id="test", chunk_index=0, text="test text")
             embeddings = await generator.generate_embeddings([chunk])
@@ -171,7 +171,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         with patch('ingestion.local_embeddings.httpx.AsyncClient'):
             # Should not raise ValueError about API key
             try:
-                generator = LocalEmbeddingGenerator("nomic-embed-text")
+                generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
                 # Constructor should succeed
                 assert generator.model_name == "nomic-embed-text"
             except ValueError as e:
@@ -188,7 +188,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         ))
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             # Test that embedding dimension is accessible like original
             assert hasattr(generator, 'embedding_dimension')
@@ -206,7 +206,7 @@ class TestOriginalEmbeddingGeneratorCompatibility:
         mock_client = AsyncMock()
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             # Should have cleanup method
             assert hasattr(generator, 'cleanup')
@@ -249,7 +249,7 @@ class TestSystemTestScenarios:
         
         with patch('ingestion.local_embeddings.httpx.AsyncClient', return_value=mock_client):
             # This mimics: generator = EmbeddingGenerator("text-embedding-ada-002")
-            generator = LocalEmbeddingGenerator("nomic-embed-text")
+            generator = LocalEmbeddingGenerator(model_name="nomic-embed-text")
             
             # This mimics the exact test chunks from system test
             test_chunks = [

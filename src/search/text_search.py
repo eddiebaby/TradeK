@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from utils.logging import get_logger
-from core.config import get_config
+from ..utils.logging import get_logger
+from ..core.config import get_config
 
 logger = get_logger(__name__)
 
@@ -159,11 +159,22 @@ class TextSearchEngine:
                 
                 params = [fts_query]
                 
-                # Add book filtering
+                # Add book filtering - SECURITY FIX: Validate and use proper parameterization
                 if filter_books:
-                    placeholders = ','.join(['?' for _ in filter_books])
-                    base_query += f" AND c.book_id IN ({placeholders})"
-                    params.extend(filter_books)
+                    # Validate filter_books input
+                    if len(filter_books) > 100:  # Reasonable limit
+                        raise ValueError("Too many book filters provided (max 100)")
+                    
+                    validated_books = []
+                    for book_id in filter_books:
+                        if not isinstance(book_id, str) or len(book_id) > 255:
+                            raise ValueError(f"Invalid book ID in filter: {book_id}")
+                        validated_books.append(book_id)
+                    
+                    # Build parameterized query safely
+                    placeholders = ','.join(['?' for _ in validated_books])
+                    base_query += " AND c.book_id IN (" + placeholders + ")"
+                    params.extend(validated_books)
                 
                 # Order by relevance and limit results
                 base_query += " ORDER BY relevance_score DESC LIMIT ?"
@@ -222,7 +233,7 @@ class TextSearchEngine:
     
     def _prepare_fts_query(self, query: str, case_sensitive: bool = False) -> str:
         """
-        Prepare query for FTS5 with advanced operators
+        Prepare query for FTS5 with advanced operators and security validation
         
         Supports:
         - Phrase search: "exact phrase"
@@ -230,8 +241,8 @@ class TextSearchEngine:
         - Wildcard: trade* (matches trading, trader, etc.)
         - Proximity: word1 NEAR/5 word2
         """
-        # Clean the query
-        query = query.strip()
+        # Security: Validate and sanitize the query
+        query = self._sanitize_search_query(query)
         
         if not query:
             raise ValueError("Query cannot be empty")
@@ -259,6 +270,87 @@ class TextSearchEngine:
                 # Convert to AND query with wildcards
                 wildcard_words = [f"{word}*" for word in words]
                 return " AND ".join(wildcard_words)
+    
+    def _sanitize_search_query(self, query: str) -> str:
+        """
+        Sanitize search query to prevent injection attacks and ensure safety.
+        
+        Args:
+            query: Raw search query
+            
+        Returns:
+            str: Sanitized query
+            
+        Raises:
+            ValueError: If query contains dangerous patterns
+        """
+        if not isinstance(query, str):
+            raise ValueError("Query must be a string")
+        
+        # Basic cleanup
+        query = query.strip()
+        
+        # Security limits
+        if len(query) > 1000:
+            raise ValueError("Query too long (max 1000 characters)")
+        
+        if len(query) < 1:
+            return ""
+        
+        # Check for SQL injection patterns - SECURITY FIX: Improved validation
+        dangerous_patterns = [
+            ';', '--', '/*', '*/', 'xp_', 'sp_', 'exec', 'execute',
+            'drop', 'delete', 'insert', 'update', 'create', 'alter',
+            'truncate', 'union', 'script', '<script'
+        ]
+        
+        # Additional SQL keywords that should never appear
+        strict_sql_patterns = [
+            'drop table', 'delete from', 'insert into', 'update set',
+            'create table', 'alter table', 'truncate table'
+        ]
+        
+        query_lower = query.lower()
+        
+        # Check strict patterns first (never allowed)
+        for pattern in strict_sql_patterns:
+            if pattern in query_lower:
+                raise ValueError(f"Query contains forbidden SQL pattern: {pattern}")
+        
+        # Check other dangerous patterns
+        for pattern in dangerous_patterns:
+            if pattern in query_lower:
+                # Special handling for legitimate search terms in quotes
+                if pattern in ['select', 'delete', 'create'] and '"' in query:
+                    # Verify it's actually in quotes
+                    import re
+                    quoted_pattern = re.compile(r'"[^"]*' + re.escape(pattern) + r'[^"]*"', re.IGNORECASE)
+                    if not quoted_pattern.search(query):
+                        raise ValueError(f"Query contains potentially dangerous pattern: {pattern}")
+                else:
+                    raise ValueError(f"Query contains potentially dangerous pattern: {pattern}")
+        
+        # Check for excessive special characters
+        special_char_count = sum(1 for c in query if not (c.isalnum() or c.isspace() or c in '"*-_()[]'))
+        if special_char_count > len(query) * 0.3:  # More than 30% special chars
+            raise ValueError("Query contains too many special characters")
+        
+        # Limit number of terms to prevent resource exhaustion
+        terms = query.split()
+        if len(terms) > 50:
+            raise ValueError("Query contains too many terms (max 50)")
+        
+        # Additional validation: check for suspicious Unicode
+        try:
+            query.encode('utf-8')
+        except UnicodeEncodeError:
+            raise ValueError("Query contains invalid characters")
+        
+        # Prevent null bytes and control characters
+        if '\x00' in query or any(ord(c) < 32 and c not in '\t\n\r' for c in query):
+            raise ValueError("Query contains invalid control characters")
+        
+        return query
     
     def search_phrase(self, phrase: str, num_results: int = None, 
                      filter_books: Optional[List[str]] = None) -> Dict[str, Any]:

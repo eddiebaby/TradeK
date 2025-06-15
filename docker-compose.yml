@@ -1,0 +1,182 @@
+# Docker Compose configuration for TradeKnowledge
+version: '3.8'
+
+services:
+  # Main API service
+  tradeknowledge-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: tradeknowledge-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-in-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      - qdrant
+      - redis
+      - ollama
+    networks:
+      - tradeknowledge
+
+  # Vector database
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: tradeknowledge-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - tradeknowledge
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: tradeknowledge-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - tradeknowledge
+
+  # Ollama for local embeddings
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tradeknowledge-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_ORIGINS=*
+    networks:
+      - tradeknowledge
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: tradeknowledge-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - tradeknowledge-api
+    networks:
+      - tradeknowledge
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tradeknowledge-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - tradeknowledge
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tradeknowledge-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - tradeknowledge
+
+volumes:
+  qdrant_data:
+  redis_data:
+  ollama_data:
+  prometheus_data:
+  grafana_data:
+  nginx_logs:
+
+networks:
+  tradeknowledge:
+    driver: bridge
+
+# Development override
+---
+# docker-compose.dev.yml
+version: '3.8'
+
+services:
+  tradeknowledge-api:
+    build:
+      target: development
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # Debug port
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app
+      - /app/venv  # Exclude venv from mount
+    command: ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]
+
+  # Skip resource-intensive services in development
+  ollama:
+    profiles: ["full"]
+  
+  prometheus:
+    profiles: ["monitoring"]
+  
+  grafana:
+    profiles: ["monitoring"]
+  
+  nginx:
+    profiles: ["production"]
