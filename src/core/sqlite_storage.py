@@ -5,58 +5,62 @@ This provides persistent storage for books and chunks,
 with full-text search capabilities using FTS5.
 """
 
-import sqlite3
+import asyncio
 import json
 import logging
-from typing import List, Dict, Any, Optional
+import sqlite3
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-import asyncio
-from contextlib import asynccontextmanager
+from typing import Any
+
 try:
     import aiosqlite
+
     AIOSQLITE_AVAILABLE = True
 except ImportError:
     AIOSQLITE_AVAILABLE = False
 
 from .interfaces import BookStorageInterface, ChunkStorageInterface
-from .models import Book, Chunk, FileType, ChunkType
+from .models import Book, Chunk, ChunkType, FileType
 
 logger = logging.getLogger(__name__)
+
 
 class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
     """
     SQLite implementation of storage interfaces.
-    
+
     This class provides:
     - Book metadata storage
     - Chunk text storage with FTS5 search
     - Transaction support
     - Connection pooling
     """
-    
-    def __init__(self, db_path: Optional[str] = None):
+
+    def __init__(self, db_path: str | None = None):
         """Initialize SQLite storage"""
         self.db_path = db_path or "data/knowledge.db"
-        
+
         # Ensure database directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Connection pool for better performance
         self._connection_pool_size = 5
         self._connection_pool = []
         self._pool_lock = asyncio.Lock()
-        
+
         # Initialize database
         self._init_database()
-        
+
     def _init_database(self):
         """Initialize database schema if needed"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         # Create books table
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS books (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -72,10 +76,12 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 created_at TEXT NOT NULL,
                 indexed_at TEXT
             )
-        ''')
-        
+        """
+        )
+
         # Create chunks table
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS chunks (
                 id TEXT PRIMARY KEY,
                 book_id TEXT NOT NULL,
@@ -93,27 +99,34 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE
             )
-        ''')
-        
+        """
+        )
+
         # Create FTS5 table for full-text search
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                 id UNINDEXED,
                 text,
                 content='chunks',
                 content_rowid='rowid'
             )
-        ''')
-        
+        """
+        )
+
         # Create indexes
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_chunks_book_id ON chunks(book_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_chunks_index ON chunks(chunk_index)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_books_hash ON books(file_hash)')
-        
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chunks_book_id ON chunks(book_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chunks_index ON chunks(chunk_index)"
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_hash ON books(file_hash)")
+
         conn.commit()
         conn.close()
         logger.info("Database initialized")
-    
+
     async def cleanup(self):
         """Cleanup connection pool"""
         async with self._pool_lock:
@@ -121,7 +134,7 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 await conn.close()
             self._connection_pool.clear()
         logger.info("SQLite storage cleaned up")
-    
+
     @asynccontextmanager
     async def _get_connection(self):
         """Get database connection from pool (async context manager)"""
@@ -132,9 +145,7 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 if AIOSQLITE_AVAILABLE:
                     # Create new connection with better settings using aiosqlite
                     conn = await aiosqlite.connect(
-                        self.db_path,
-                        timeout=30.0,
-                        check_same_thread=False
+                        self.db_path, timeout=30.0, check_same_thread=False
                     )
                     conn.row_factory = aiosqlite.Row
                     # Enable WAL mode for better concurrent access
@@ -145,10 +156,10 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 else:
                     # Fallback to sqlite3 with asyncio.to_thread
                     conn = await asyncio.to_thread(
-                        sqlite3.connect, 
+                        sqlite3.connect,
                         self.db_path,
                         timeout=30.0,
-                        check_same_thread=False
+                        check_same_thread=False,
                     )
                     conn.row_factory = sqlite3.Row
                     # Enable optimizations
@@ -156,7 +167,7 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                     await asyncio.to_thread(conn.execute, "PRAGMA synchronous=NORMAL")
                     await asyncio.to_thread(conn.execute, "PRAGMA cache_size=10000")
                     await asyncio.to_thread(conn.execute, "PRAGMA temp_store=memory")
-        
+
         try:
             yield conn
         finally:
@@ -166,9 +177,9 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                     self._connection_pool.append(conn)
                 else:
                     await conn.close()
-    
+
     # Book Storage Methods
-    
+
     async def save_book(self, book: Book) -> bool:
         """Save a book's metadata"""
         try:
@@ -177,10 +188,10 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                 raise ValueError("Invalid book ID")
             if not book.title or len(book.title) > 1000:
                 raise ValueError("Invalid book title")
-            
+
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Convert metadata to JSON with size limits
                 try:
                     metadata_json = json.dumps(book.metadata)
@@ -188,14 +199,14 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                         raise ValueError("Book metadata too large")
                 except (TypeError, ValueError) as e:
                     raise ValueError(f"Invalid book metadata: {e}")
-                
+
                 try:
                     categories_json = json.dumps(book.categories)
                     if len(categories_json) > 1000:  # 1KB limit
                         raise ValueError("Categories data too large")
                 except (TypeError, ValueError) as e:
                     raise ValueError(f"Invalid categories: {e}")
-                
+
                 # Insert or replace
                 await asyncio.to_thread(
                     cursor.execute,
@@ -218,82 +229,81 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                         categories_json,
                         metadata_json,
                         book.created_at.isoformat(),
-                        book.indexed_at.isoformat() if book.indexed_at else None
-                    )
+                        book.indexed_at.isoformat() if book.indexed_at else None,
+                    ),
                 )
-                
+
                 await asyncio.to_thread(conn.commit)
                 logger.info(f"Saved book: {book.id} - {book.title}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error saving book: {e}")
             return False
-    
-    async def get_book(self, book_id: str) -> Optional[Book]:
+
+    async def get_book(self, book_id: str) -> Book | None:
         """Retrieve a book by ID"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 await asyncio.to_thread(
-                    cursor.execute,
-                    "SELECT * FROM books WHERE id = ?",
-                    (book_id,)
+                    cursor.execute, "SELECT * FROM books WHERE id = ?", (book_id,)
                 )
-                
+
                 row = await asyncio.to_thread(cursor.fetchone)
                 if row:
                     return self._row_to_book(row)
-                
+
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error retrieving book: {e}")
             return None
-    
-    async def get_book_by_hash(self, file_hash: str) -> Optional[Book]:
+
+    async def get_book_by_hash(self, file_hash: str) -> Book | None:
         """Retrieve a book by file hash"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 await asyncio.to_thread(
                     cursor.execute,
                     "SELECT * FROM books WHERE file_hash = ?",
-                    (file_hash,)
+                    (file_hash,),
                 )
-                
+
                 row = await asyncio.to_thread(cursor.fetchone)
                 if row:
                     return self._row_to_book(row)
-                
+
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error retrieving book by hash: {e}")
             return None
-    
-    async def list_books(self, 
-                        category: Optional[str] = None,
-                        limit: int = 100,
-                        offset: int = 0) -> List[Book]:
+
+    async def list_books(
+        self, category: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[Book]:
         """List books with optional filtering"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 if category:
                     # Search in categories JSON - properly sanitize category
                     # Escape SQL LIKE wildcards and validate category
-                    sanitized_category = category.replace('%', '\\%').replace('_', '\\_')
+                    sanitized_category = category.replace("%", "\\%").replace(
+                        "_", "\\_"
+                    )
                     query = """
                         SELECT * FROM books 
                         WHERE categories LIKE ? ESCAPE '\'
                         ORDER BY created_at DESC
                         LIMIT ? OFFSET ?
                     """
-                    params = (f'%{sanitized_category}%', limit, offset)
+                    params = (f"%{sanitized_category}%", limit, offset)
                 else:
                     query = """
                         SELECT * FROM books
@@ -301,85 +311,83 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                         LIMIT ? OFFSET ?
                     """
                     params = (limit, offset)
-                
+
                 await asyncio.to_thread(cursor.execute, query, params)
-                
+
                 rows = await asyncio.to_thread(cursor.fetchall)
                 return [self._row_to_book(row) for row in rows]
-                
+
         except Exception as e:
             logger.error(f"Error listing books: {e}")
             return []
-    
+
     async def update_book(self, book: Book) -> bool:
         """Update book metadata"""
         # Same as save_book with INSERT OR REPLACE
         return await self.save_book(book)
-    
+
     async def delete_book(self, book_id: str) -> bool:
         """Delete a book and all its chunks"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Delete chunks first (foreign key constraint)
                 await asyncio.to_thread(
-                    cursor.execute,
-                    "DELETE FROM chunks WHERE book_id = ?",
-                    (book_id,)
+                    cursor.execute, "DELETE FROM chunks WHERE book_id = ?", (book_id,)
                 )
-                
+
                 # Delete book
                 await asyncio.to_thread(
-                    cursor.execute,
-                    "DELETE FROM books WHERE id = ?",
-                    (book_id,)
+                    cursor.execute, "DELETE FROM books WHERE id = ?", (book_id,)
                 )
-                
+
                 await asyncio.to_thread(conn.commit)
                 logger.info(f"Deleted book and chunks: {book_id}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error deleting book: {e}")
             return False
-    
+
     # Chunk Storage Methods
-    
-    async def save_chunks(self, chunks: List[Chunk]) -> bool:
+
+    async def save_chunks(self, chunks: list[Chunk]) -> bool:
         """Save multiple chunks efficiently"""
         if not chunks:
             return True
-        
+
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Prepare data
                 chunk_data = []
                 fts_data = []
                 for chunk in chunks:
                     metadata_json = json.dumps(chunk.metadata)
-                    chunk_data.append((
-                        chunk.id,
-                        chunk.book_id,
-                        chunk.chunk_index,
-                        chunk.text,
-                        chunk.chunk_type.value,
-                        chunk.embedding_id,
-                        chunk.chapter,
-                        chunk.section,
-                        chunk.page_start,
-                        chunk.page_end,
-                        chunk.previous_chunk_id,
-                        chunk.next_chunk_id,
-                        metadata_json,
-                        chunk.created_at.isoformat()
-                    ))
-                    
+                    chunk_data.append(
+                        (
+                            chunk.id,
+                            chunk.book_id,
+                            chunk.chunk_index,
+                            chunk.text,
+                            chunk.chunk_type.value,
+                            chunk.embedding_id,
+                            chunk.chapter,
+                            chunk.section,
+                            chunk.page_start,
+                            chunk.page_end,
+                            chunk.previous_chunk_id,
+                            chunk.next_chunk_id,
+                            metadata_json,
+                            chunk.created_at.isoformat(),
+                        )
+                    )
+
                     # FTS data
                     fts_data.append((chunk.id, chunk.text))
-                
+
                 # Batch insert chunks
                 await asyncio.to_thread(
                     cursor.executemany,
@@ -390,52 +398,50 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                         previous_chunk_id, next_chunk_id, metadata, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    chunk_data
+                    chunk_data,
                 )
-                
+
                 # Update FTS index
                 await asyncio.to_thread(
                     cursor.executemany,
                     "INSERT OR REPLACE INTO chunks_fts(id, text) VALUES (?, ?)",
-                    fts_data
+                    fts_data,
                 )
-                
+
                 await asyncio.to_thread(conn.commit)
                 logger.info(f"Saved {len(chunks)} chunks")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error saving chunks: {e}")
             return False
-    
-    async def get_chunk(self, chunk_id: str) -> Optional[Chunk]:
+
+    async def get_chunk(self, chunk_id: str) -> Chunk | None:
         """Retrieve a single chunk"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 await asyncio.to_thread(
-                    cursor.execute,
-                    "SELECT * FROM chunks WHERE id = ?",
-                    (chunk_id,)
+                    cursor.execute, "SELECT * FROM chunks WHERE id = ?", (chunk_id,)
                 )
-                
+
                 row = await asyncio.to_thread(cursor.fetchone)
                 if row:
                     return self._row_to_chunk(row)
-                
+
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error retrieving chunk: {e}")
             return None
-    
-    async def get_chunks_by_book(self, book_id: str) -> List[Chunk]:
+
+    async def get_chunks_by_book(self, book_id: str) -> list[Chunk]:
         """Get all chunks for a book"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 await asyncio.to_thread(
                     cursor.execute,
                     """
@@ -443,38 +449,35 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                     WHERE book_id = ?
                     ORDER BY chunk_index
                     """,
-                    (book_id,)
+                    (book_id,),
                 )
-                
+
                 rows = await asyncio.to_thread(cursor.fetchall)
                 return [self._row_to_chunk(row) for row in rows]
-                
+
         except Exception as e:
             logger.error(f"Error retrieving chunks by book: {e}")
             return []
-    
-    async def get_chunk_context(self, 
-                               chunk_id: str,
-                               before: int = 1,
-                               after: int = 1) -> Dict[str, Any]:
+
+    async def get_chunk_context(
+        self, chunk_id: str, before: int = 1, after: int = 1
+    ) -> dict[str, Any]:
         """Get a chunk with surrounding context"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Get the target chunk
                 await asyncio.to_thread(
-                    cursor.execute,
-                    "SELECT * FROM chunks WHERE id = ?",
-                    (chunk_id,)
+                    cursor.execute, "SELECT * FROM chunks WHERE id = ?", (chunk_id,)
                 )
-                
+
                 target_row = await asyncio.to_thread(cursor.fetchone)
                 if not target_row:
                     return {}
-                
+
                 target_chunk = self._row_to_chunk(target_row)
-                
+
                 # Get surrounding chunks
                 await asyncio.to_thread(
                     cursor.execute,
@@ -488,65 +491,64 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                     (
                         target_chunk.book_id,
                         target_chunk.chunk_index - before,
-                        target_chunk.chunk_index + after
-                    )
+                        target_chunk.chunk_index + after,
+                    ),
                 )
-                
+
                 rows = await asyncio.to_thread(cursor.fetchall)
                 chunks = [self._row_to_chunk(row) for row in rows]
-                
+
                 # Build context
-                context = {
-                    'chunk': target_chunk,
-                    'before': [],
-                    'after': []
-                }
-                
+                context = {"chunk": target_chunk, "before": [], "after": []}
+
                 for chunk in chunks:
                     if chunk.chunk_index < target_chunk.chunk_index:
-                        context['before'].append(chunk)
+                        context["before"].append(chunk)
                     elif chunk.chunk_index > target_chunk.chunk_index:
-                        context['after'].append(chunk)
-                
+                        context["after"].append(chunk)
+
                 return context
-                
+
         except Exception as e:
             logger.error(f"Error getting chunk context: {e}")
             return {}
-    
-    async def search_exact(self,
-                          query: str,
-                          book_ids: Optional[List[str]] = None,
-                          limit: int = 10) -> List[Dict[str, Any]]:
+
+    async def search_exact(
+        self, query: str, book_ids: list[str] | None = None, limit: int = 10
+    ) -> list[dict[str, Any]]:
         """Perform exact text search using FTS5"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Build query - SECURITY FIX: Use proper parameterization
                 if book_ids:
                     # Validate book_ids are strings and not too many
                     if len(book_ids) > 100:  # Reasonable limit
                         raise ValueError("Too many book IDs provided (max 100)")
-                    
+
                     validated_book_ids = []
                     for book_id in book_ids:
                         if not isinstance(book_id, str) or len(book_id) > 255:
                             raise ValueError(f"Invalid book ID: {book_id}")
                         validated_book_ids.append(book_id)
-                    
+
                     # Create placeholders safely
-                    placeholders = ','.join('?' * len(validated_book_ids))
-                    fts_query = """
+                    placeholders = ",".join("?" * len(validated_book_ids))
+                    fts_query = (
+                        """
                         SELECT c.*, snippet(chunks_fts, 1, '<mark>', '</mark>', '...', 20) as snippet,
                                rank as score
                         FROM chunks_fts 
                         JOIN chunks c ON chunks_fts.id = c.id
                         WHERE chunks_fts MATCH ? 
-                        AND c.book_id IN (""" + placeholders + """)
+                        AND c.book_id IN ("""
+                        + placeholders
+                        + """)
                         ORDER BY rank
                         LIMIT ?
                     """
+                    )
                     params = [query] + validated_book_ids + [limit]
                 else:
                     fts_query = """
@@ -559,99 +561,104 @@ class SQLiteStorage(BookStorageInterface, ChunkStorageInterface):
                         LIMIT ?
                     """
                     params = [query, limit]
-                
+
                 await asyncio.to_thread(cursor.execute, fts_query, params)
-                
+
                 rows = await asyncio.to_thread(cursor.fetchall)
                 results = []
-                
+
                 for row in rows:
                     chunk = self._row_to_chunk(row)
-                    results.append({
-                        'chunk': chunk,
-                        'score': -row['score'],  # FTS5 rank is negative
-                        'snippet': row['snippet']
-                    })
-                
+                    results.append(
+                        {
+                            "chunk": chunk,
+                            "score": -row["score"],  # FTS5 rank is negative
+                            "snippet": row["snippet"],
+                        }
+                    )
+
                 return results
-                
+
         except Exception as e:
             logger.error(f"Error in exact search: {e}")
             return []
-    
+
     async def delete_chunks_by_book(self, book_id: str) -> bool:
         """Delete all chunks for a book"""
         try:
             async with self._get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Delete from FTS first
                 await asyncio.to_thread(
                     cursor.execute,
                     "DELETE FROM chunks_fts WHERE id IN (SELECT id FROM chunks WHERE book_id = ?)",
-                    (book_id,)
+                    (book_id,),
                 )
-                
+
                 # Delete chunks
                 await asyncio.to_thread(
-                    cursor.execute,
-                    "DELETE FROM chunks WHERE book_id = ?",
-                    (book_id,)
+                    cursor.execute, "DELETE FROM chunks WHERE book_id = ?", (book_id,)
                 )
-                
+
                 await asyncio.to_thread(conn.commit)
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error deleting chunks: {e}")
             return False
-    
+
     # Helper methods
-    
+
     def _row_to_book(self, row: sqlite3.Row) -> Book:
         """Convert database row to Book object"""
         return Book(
-            id=row['id'],
-            title=row['title'],
-            author=row['author'],
-            isbn=row['isbn'],
-            file_path=row['file_path'],
-            file_type=FileType(row['file_type']),
-            file_hash=row['file_hash'],
-            total_pages=row['total_pages'],
-            total_chunks=row['total_chunks'],
-            categories=json.loads(row['categories']) if row['categories'] else [],
-            metadata=json.loads(row['metadata']) if row['metadata'] else {},
-            created_at=datetime.fromisoformat(row['created_at']),
-            indexed_at=datetime.fromisoformat(row['indexed_at']) if row['indexed_at'] else None
+            id=row["id"],
+            title=row["title"],
+            author=row["author"],
+            isbn=row["isbn"],
+            file_path=row["file_path"],
+            file_type=FileType(row["file_type"]),
+            file_hash=row["file_hash"],
+            total_pages=row["total_pages"],
+            total_chunks=row["total_chunks"],
+            categories=json.loads(row["categories"]) if row["categories"] else [],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+            indexed_at=(
+                datetime.fromisoformat(row["indexed_at"]) if row["indexed_at"] else None
+            ),
         )
-    
+
     def _row_to_chunk(self, row: sqlite3.Row) -> Chunk:
         """Convert database row to Chunk object"""
-        metadata = json.loads(row['metadata']) if row['metadata'] else {}
-        
+        metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+
         return Chunk(
-            id=row['id'],
-            book_id=row['book_id'],
-            chunk_index=row['chunk_index'],
-            text=row['text'],
-            chunk_type=ChunkType(row['chunk_type']) if row['chunk_type'] else ChunkType.TEXT,
-            embedding_id=row['embedding_id'],
-            chapter=row['chapter'],
-            section=row['section'],
-            page_start=row['page_start'],
-            page_end=row['page_end'],
-            previous_chunk_id=row['previous_chunk_id'],
-            next_chunk_id=row['next_chunk_id'],
+            id=row["id"],
+            book_id=row["book_id"],
+            chunk_index=row["chunk_index"],
+            text=row["text"],
+            chunk_type=(
+                ChunkType(row["chunk_type"]) if row["chunk_type"] else ChunkType.TEXT
+            ),
+            embedding_id=row["embedding_id"],
+            chapter=row["chapter"],
+            section=row["section"],
+            page_start=row["page_start"],
+            page_end=row["page_end"],
+            previous_chunk_id=row["previous_chunk_id"],
+            next_chunk_id=row["next_chunk_id"],
             metadata=metadata,
-            created_at=datetime.fromisoformat(row['created_at'])
+            created_at=datetime.fromisoformat(row["created_at"]),
         )
+
 
 # Test the storage
 async def test_storage():
     """Test SQLite storage implementation"""
     storage = SQLiteStorage("data/test.db")
-    
+
     # Test book operations
     book = Book(
         id="test-001",
@@ -659,37 +666,38 @@ async def test_storage():
         author="Test Author",
         file_path="data/books/test.pdf",  # FIXED: Use relative path
         file_type=FileType.PDF,
-        file_hash="testhash123"
+        file_hash="testhash123",
     )
-    
+
     # Save book
     success = await storage.save_book(book)
     print(f"Save book: {success}")
-    
+
     # Retrieve book
     retrieved = await storage.get_book("test-001")
     print(f"Retrieved: {retrieved.title if retrieved else 'Not found'}")
-    
+
     # Test chunk operations
     chunks = [
         Chunk(
             book_id="test-001",
             chunk_index=i,
-            text=f"This is test chunk {i} about trading strategies"
+            text=f"This is test chunk {i} about trading strategies",
         )
         for i in range(5)
     ]
-    
+
     # Save chunks
     success = await storage.save_chunks(chunks)
     print(f"Save chunks: {success}")
-    
+
     # Search
     results = await storage.search_exact("trading", limit=3)
     print(f"Search results: {len(results)}")
-    
+
     for result in results:
         print(f"  - {result['chunk'].text[:50]}... (score: {result['score']:.3f})")
+
 
 if __name__ == "__main__":
     asyncio.run(test_storage())
