@@ -40,7 +40,19 @@ CMakeFiles/
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
 chroma_db/
+
+# Vector Databases and Runtime Data
+data/qdrant/
+data/chromadb/
+agents/influxdb-data/
+influxdb-data/
+
+# Blackboard Data Files
+agents/data/chromadb/
+agents/data/persistent/
 
 # Books
 books/
