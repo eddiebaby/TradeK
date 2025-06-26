@@ -1,0 +1,73 @@
+# InfluxDB 2.7 Configuration for Agent Blackboard System
+# Token-Optimized Inter-Agent Communication & Self-Reflection System
+
+influxdb:
+  url: "http://localhost:8086"  # Standard InfluxDB port
+  org: "TradeKnowledge"
+  bucket: "blackboard"
+  token_file: "/home/scottschweizer/TradeKnowledge/agents/config/.influx_token"
+  
+# Retention policies for different data types
+# Extended for organic data accumulation (1000+ record goal)
+retention_policies:
+  tasks: "365d"         # Task data kept for 1 year (extended from 7d)
+  data: "30d"           # Cached data kept for 30 days (extended from 24h)
+  metrics: "180d"       # Performance metrics kept for 6 months (extended from 30d)
+  reflections: "365d"   # Agent reflections kept for 1 year (extended from 90d)
+  patterns: "365d"      # Learned patterns kept for 1 year (unchanged)
+  optimizations: "180d" # Optimization suggestions kept for 6 months (extended from 30d)
+
+# Token optimization settings
+token_optimization:
+  compression_threshold: 100    # Compress data over 100 chars
+  cache_ttl: 3600              # Default cache TTL in seconds
+  max_inline_data: 200         # Max inline data size
+  batch_size: 10               # Batch operations for efficiency
+
+# Agent configuration
+agents:
+  researcher:
+    code: "R"
+    capabilities: ["intelligence", "security", "benchmarking"]
+    token_budget:
+      read: 50
+      process: 200
+      write: 100
+  
+  mastermind:
+    code: "M" 
+    capabilities: ["strategy", "architecture", "quality"]
+    token_budget:
+      read: 50
+      process: 300
+      write: 150
+      
+  executor:
+    code: "E"
+    capabilities: ["implementation", "testing", "deployment"]
+    token_budget:
+      read: 50
+      process: 250
+      write: 100
+
+# Monitoring thresholds
+monitoring:
+  high_token_usage: 1000        # Alert if operation uses > 1000 tokens
+  slow_execution: 5.0           # Alert if operation takes > 5 seconds
+  error_threshold: 3            # Alert if > 3 errors in 10 minutes
+  low_confidence: 0.7           # Alert if confidence < 70%
+
+# Self-reflection triggers
+reflection:
+  auto_reflect_interval: 3600   # Auto-reflect every hour
+  pattern_detection_window: "24h"
+  optimization_threshold: 100   # Suggest optimization if savings > 100 tokens
+  cross_agent_learning: true
+
+# Data retention management
+data_retention:
+  minimum_records: 1000         # Don't purge until we have at least 1000 records
+  storage_warning_threshold: 80  # Warn when storage > 80% full
+  storage_critical_threshold: 95 # Force purge when storage > 95% full
+  preserve_trio_workflows: true  # Always preserve complete trio workflows
+  smart_purging_enabled: true    # Enable intelligent data purging
