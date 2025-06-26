@@ -72,3 +72,46 @@ logs/
 # Config with secrets
 config/secrets.yaml
 .env.local
+.env.database
+agents/config/.influx_token
+agents/config/*.key
+agents/config/*.token
+
+# Performance and monitoring data
+performance_data/
+agents/influxdb-data/
+agents/data_cache.json
+neural_sde_quick_summary.json
+neural_sde_tradeknowledge_entry.json
+schwab_oauth_research_report.json
+agents/ollama_upgrade_results.json
+agents/openai_analysis_results.py
+
+# Large binaries and downloads
+*.tgz
+*.deb
+*.key.*
+cuda-keyring_*
+ollama-linux-amd64.tgz
+influxdata-archive_compat.key*
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Testing and coverage
+.coverage
+tdd_metrics.db*
+
+# Temporary and cache files
+.roomodes
+*:Zone.Identifier
+
+# Database backups and dumps
+backup_*/
+database/
+
+# Agent cache and runtime
+agents/data_cache.json
+agents/persistent_memory.db
+agents/blackboard_*.db
