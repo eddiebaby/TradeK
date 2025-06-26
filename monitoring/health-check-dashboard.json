@@ -1,0 +1,101 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "TradeKnowledge Health Check Dashboard",
+    "tags": ["health", "monitoring", "api"],
+    "timezone": "browser",
+    "refresh": "5s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Overall Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"tradeknowledge-api\"}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Health Check Response Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "http_request_duration_seconds{endpoint=\"/health\"}",
+            "refId": "A"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Seconds",
+            "min": 0,
+            "max": 0.1
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Health Check Success Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{endpoint=\"/health\",status=\"200\"}[5m])",
+            "refId": "A",
+            "legendFormat": "Success"
+          },
+          {
+            "expr": "rate(http_requests_total{endpoint=\"/health\",status!=\"200\"}[5m])",
+            "refId": "B",
+            "legendFormat": "Failure"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Dependency Health Status",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "health_check_dependency_status",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Health Check Rate Limiting",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{endpoint=\"/health\",status=\"429\"}[5m])",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ]
+  }
+}

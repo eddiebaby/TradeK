@@ -1,0 +1,151 @@
+# Pre-commit hooks for TradeKnowledge
+# Run: pre-commit install to enable
+
+repos:
+  # Built-in hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^tests/fixtures/
+      - id: end-of-file-fixer
+        exclude: ^tests/fixtures/
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-added-large-files
+        args: ['--maxkb=10240']  # 10MB limit
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+      - id: check-docstring-first
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  # Python code formatting
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+        language_version: python3.12
+        args: [--line-length=88]
+
+  # Import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: ["--profile", "black", "--line-length", "88"]
+
+  # Linting
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-docstrings
+          - flake8-security
+          - flake8-bugbear
+          - flake8-comprehensions
+        args: [--max-line-length=88, --extend-ignore=E203,W503,D100,D101,D102,D103,D104,D105,D106,D107]
+
+  # Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-requests, types-PyYAML]
+        args: [--ignore-missing-imports, --no-strict-optional]
+        exclude: ^(tests/|migrations/)
+
+  # Security scanning
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        exclude: ^tests/
+
+  # Documentation
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        args: [--convention=google]
+        exclude: ^(tests/|migrations/|scripts/)
+
+  # Dependency security
+  - repo: https://github.com/pyupio/safety
+    rev: 2.3.4
+    hooks:
+      - id: safety
+        args: [--json]
+        exclude: ^requirements-dev.txt$
+
+  # YAML formatting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.0
+    hooks:
+      - id: prettier
+        types_or: [yaml, markdown]
+        exclude: ^(\.github/|docs/)
+
+  # Security secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: ^(tests/fixtures/|\.env\.example)$
+
+  # Python security
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.3.2
+    hooks:
+      - id: python-safety-dependencies-check
+
+  # TDD Workflow Enforcement
+  - repo: local
+    hooks:
+      - id: tdd-workflow-check
+        name: TDD Workflow Validation
+        entry: scripts/tdd_workflow_check.py
+        language: python
+        stages: [pre-commit]
+        types: [python]
+        args: [--enforce-aaa, --check-naming, --require-tests]
+        
+      - id: test-execution-speed
+        name: Test Execution Speed Check
+        entry: scripts/test_speed_check.py
+        language: python
+        stages: [pre-commit]
+        files: ^tests/unit/
+        args: [--max-time=100]
+        
+      - id: security-test-coverage
+        name: Security Test Coverage Check
+        entry: scripts/security_coverage_check.py
+        language: python
+        stages: [pre-commit]
+        files: ^src/
+        args: [--require-security-tests]
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint
+        args: [--ignore, DL3008, --ignore, DL3009]
+
+# Global configuration
+default_stages: [pre-commit]
+fail_fast: false
+
+# CI configuration
+ci:
+  autofix_commit_msg: "fix: auto-fix pre-commit issues"
+  autofix_prs: true
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  autoupdate_schedule: weekly

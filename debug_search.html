@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Concept Search</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+        button { padding: 10px 20px; margin: 5px; }
+        .result { background: #f5f5f5; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+        input { padding: 8px; margin: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug Concept Search</h1>
+
+    <div class="test-section">
+        <h2>Direct API Tests</h2>
+        <button onclick="testEmpty()">Test Empty Search</button>
+        <button onclick="testNumpy()">Test "numpy"</button>
+        <button onclick="testPandas()">Test "pandas"</button>
+        <button onclick="testML()">Test "machine learning"</button>
+        <div id="api-results" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Interactive Search</h2>
+        <input type="text" id="searchInput" placeholder="Search for concepts..." value="numpy">
+        <select id="categorySelect">
+            <option value="">All Categories</option>
+            <option value="python_libraries">Python Libraries</option>
+            <option value="programming_concepts">Programming Concepts</option>
+            <option value="strategies">Strategies</option>
+            <option value="risk_management">Risk Management</option>
+        </select>
+        <button onclick="searchConcepts()">Search</button>
+        <div id="search-results" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Chat Test</h2>
+        <input type="text" id="chatInput" placeholder="Ask about a concept..." value="What is numpy?">
+        <button onclick="testChat()">Ask</button>
+        <div id="chat-results" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8001/api';
+
+        async function testAPI(url, label) {
+            try {
+                console.log(`Testing: ${label} - ${url}`);
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                let result = `${label}:\n`;
+                result += `Status: ${response.status}\n`;
+                result += `URL: ${url}\n`;
+                result += `Results: ${data.concepts ? data.concepts.length : 'N/A'}\n`;
+                
+                if (data.concepts && data.concepts.length > 0) {
+                    result += `First few concepts:\n`;
+                    data.concepts.slice(0, 5).forEach(concept => {
+                        result += `  • ${concept.name} (${concept.category})\n`;
+                    });
+                }
+                
+                return result + '\n---\n';
+            } catch (error) {
+                return `${label} ERROR: ${error.message}\n---\n`;
+            }
+        }
+
+        async function testEmpty() {
+            const result = await testAPI(`${API_BASE}/concepts?query=`, 'Empty Search');
+            document.getElementById('api-results').textContent = result;
+        }
+
+        async function testNumpy() {
+            const result = await testAPI(`${API_BASE}/concepts?query=numpy`, 'Numpy Search');
+            document.getElementById('api-results').textContent = result;
+        }
+
+        async function testPandas() {
+            const result = await testAPI(`${API_BASE}/concepts?query=pandas`, 'Pandas Search');
+            document.getElementById('api-results').textContent = result;
+        }
+
+        async function testML() {
+            const result = await testAPI(`${API_BASE}/concepts?query=machine learning`, 'Machine Learning Search');
+            document.getElementById('api-results').textContent = result;
+        }
+
+        async function searchConcepts() {
+            const search = document.getElementById('searchInput').value;
+            const category = document.getElementById('categorySelect').value;
+            
+            const params = new URLSearchParams();
+            if (search) params.append('query', search);
+            if (category) params.append('category', category);
+            
+            const url = `${API_BASE}/concepts?${params}`;
+            const result = await testAPI(url, `Interactive Search (${search})`);
+            document.getElementById('search-results').textContent = result;
+        }
+
+        async function testChat() {
+            const message = document.getElementById('chatInput').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        user_id: 'debug'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                let result = `Chat Test: "${message}"\n`;
+                result += `Status: ${response.status}\n`;
+                result += `Response: ${data.content.substring(0, 200)}...\n`;
+                result += `Concepts: ${data.concepts_covered.join(', ')}\n`;
+                result += `Sources: ${data.source_books.length} books\n`;
+                
+                document.getElementById('chat-results').textContent = result;
+            } catch (error) {
+                document.getElementById('chat-results').textContent = `Chat ERROR: ${error.message}`;
+            }
+        }
+
+        // Auto-test on load
+        window.onload = () => {
+            testEmpty();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 Trading Knowledge - Comprehensive Debug</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; padding: 20px; 
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .debug-section { 
+            background: white; 
+            margin: 20px 0; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status { padding: 8px 12px; border-radius: 4px; margin: 5px 0; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        
+        button { 
+            background: #007bff; color: white; border: none; 
+            padding: 10px 20px; margin: 5px; border-radius: 4px; 
+            cursor: pointer; font-size: 14px;
+        }
+        button:hover { background: #0056b3; }
+        button.secondary { background: #6c757d; }
+        button.success { background: #28a745; }
+        button.danger { background: #dc3545; }
+        
+        input, select { 
+            padding: 8px 12px; margin: 5px; border: 1px solid #ddd; 
+            border-radius: 4px; font-size: 14px;
+        }
+        
+        .result { 
+            background: #f8f9fa; border: 1px solid #dee2e6; 
+            border-radius: 4px; padding: 15px; margin: 10px 0; 
+            white-space: pre-wrap; font-family: monospace; 
+            max-height: 300px; overflow-y: auto;
+        }
+        
+        .concept-grid { 
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+            gap: 15px; margin: 20px 0;
+        }
+        .concept-card { 
+            background: #f8f9fa; border: 1px solid #dee2e6; 
+            border-radius: 8px; padding: 15px; cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .concept-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .concept-name { font-weight: bold; margin-bottom: 5px; }
+        .concept-category { color: #6c757d; font-size: 12px; text-transform: uppercase; }
+        
+        .log { 
+            background: #000; color: #0f0; padding: 15px; 
+            border-radius: 4px; font-family: monospace; 
+            max-height: 200px; overflow-y: auto; 
+            font-size: 12px; line-height: 1.4;
+        }
+        
+        .stats { 
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+            gap: 15px; margin: 20px 0;
+        }
+        .stat-card { 
+            background: #f8f9fa; padding: 15px; border-radius: 8px; 
+            text-align: center; border: 1px solid #dee2e6;
+        }
+        .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
+        .stat-label { color: #6c757d; font-size: 14px; }
+        
+        .search-bar { 
+            display: flex; align-items: center; gap: 10px; 
+            margin: 20px 0; padding: 15px; background: #f8f9fa; 
+            border-radius: 8px; border: 1px solid #dee2e6;
+        }
+        .search-bar input { flex: 1; margin: 0; }
+        
+        h1 { color: #007bff; margin-bottom: 30px; }
+        h2 { color: #495057; border-bottom: 2px solid #dee2e6; padding-bottom: 10px; }
+        h3 { color: #6c757d; }
+        
+        .flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .full-width { width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Trading Knowledge - Comprehensive Debug</h1>
+        
+        <div class="debug-section">
+            <h2>📊 System Status</h2>
+            <div class="stats" id="systemStats">
+                <div class="stat-card">
+                    <div class="stat-value" id="serverStatus">⏳</div>
+                    <div class="stat-label">Server Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalConcepts">0</div>
+                    <div class="stat-label">Total Concepts</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalBooks">0</div>
+                    <div class="stat-label">Books Processed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="searchResults">0</div>
+                    <div class="stat-label">Search Results</div>
+                </div>
+            </div>
+            <div id="statusLog" class="result"></div>
+        </div>
+
+        <div class="debug-section">
+            <h2>🔍 Concept Search Testing</h2>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="Search concepts..." value="numpy">
+                <select id="categorySelect">
+                    <option value="">All Categories</option>
+                    <option value="python_libraries">Python Libraries</option>
+                    <option value="programming_concepts">Programming Concepts</option>
+                    <option value="data_analysis">Data Analysis</option>
+                    <option value="strategies">Strategies</option>
+                    <option value="risk_management">Risk Management</option>
+                    <option value="market_structure">Market Structure</option>
+                    <option value="indicators">Indicators</option>
+                </select>
+                <button onclick="searchConcepts()">🔍 Search</button>
+                <button onclick="loadAllConcepts()" class="secondary">📚 Load All</button>
+                <button onclick="clearResults()" class="danger">🗑️ Clear</button>
+            </div>
+            
+            <div class="flex">
+                <button onclick="testSpecificConcept('numpy')">Test: numpy</button>
+                <button onclick="testSpecificConcept('pandas')">Test: pandas</button>
+                <button onclick="testSpecificConcept('machine learning')">Test: ML</button>
+                <button onclick="testPythonLibraries()">Test: Python Libs</button>
+            </div>
+            
+            <div id="searchResults" class="concept-grid"></div>
+        </div>
+
+        <div class="debug-section">
+            <h2>💬 Chat Interface Testing</h2>
+            <div class="search-bar">
+                <input type="text" id="chatInput" placeholder="Ask about concepts..." value="What is numpy?">
+                <select id="difficultySelect">
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="expert">Expert</option>
+                </select>
+                <button onclick="testChat()">💬 Ask</button>
+            </div>
+            
+            <div class="flex">
+                <button onclick="askAbout('numpy')">Ask: What is numpy?</button>
+                <button onclick="askAbout('pandas')">Ask: Explain pandas</button>
+                <button onclick="askAbout('machine learning')">Ask: ML for trading</button>
+                <button onclick="askAbout('time series')">Ask: Time series</button>
+            </div>
+            
+            <div id="chatResults" class="result"></div>
+        </div>
+
+        <div class="debug-section">
+            <h2>🌐 API Endpoint Testing</h2>
+            <div class="flex">
+                <button onclick="testEndpoint('/api/health')">Health Check</button>
+                <button onclick="testEndpoint('/api/books')">Books API</button>
+                <button onclick="testEndpoint('/api/concepts?query=')">All Concepts</button>
+                <button onclick="testEndpoint('/api/concepts?query=numpy')">Numpy Search</button>
+                <button onclick="testEndpoint('/api/concepts?category=python_libraries')">Python Libs</button>
+                <button onclick="testEndpoint('/api/stats')">System Stats</button>
+            </div>
+            <div id="apiResults" class="result"></div>
+        </div>
+
+        <div class="debug-section">
+            <h2>🔄 Performance Testing</h2>
+            <div class="flex">
+                <button onclick="performanceTest()">⚡ Run Performance Test</button>
+                <button onclick="stressTest()">🏋️ Stress Test (100 requests)</button>
+                <button onclick="sequentialTest()">📋 Sequential Test</button>
+            </div>
+            <div id="performanceResults" class="result"></div>
+        </div>
+
+        <div class="debug-section">
+            <h2>🔬 Browser & Network Diagnostics</h2>
+            <div id="diagnostics" class="result"></div>
+            <button onclick="runDiagnostics()">🔍 Run Diagnostics</button>
+            <button onclick="checkCORS()">🌐 Check CORS</button>
+            <button onclick="testLocalStorage()">💾 Test Storage</button>
+        </div>
+
+        <div class="debug-section">
+            <h2>📋 Activity Log</h2>
+            <div class="flex">
+                <button onclick="clearLog()">🗑️ Clear Log</button>
+                <button onclick="exportLog()">📥 Export Log</button>
+            </div>
+            <div id="activityLog" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8001/api';
+        let logEntries = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `[${timestamp}] ${type.toUpperCase()}: ${message}`;
+            logEntries.push(entry);
+            
+            const logDiv = document.getElementById('activityLog');
+            logDiv.textContent = logEntries.slice(-50).join('\n');
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(entry);
+        }
+
+        function updateStatus(id, value, type = 'info') {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+                element.className = `stat-value ${type}`;
+            }
+        }
+
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    updateStatus('serverStatus', '✅', 'success');
+                    log('Server is running', 'success');
+                    return true;
+                } else {
+                    updateStatus('serverStatus', '❌', 'error');
+                    log(`Server error: ${response.status}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                updateStatus('serverStatus', '🔴', 'error');
+                log(`Cannot connect to server: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function loadAllConcepts() {
+            log('Loading all concepts...');
+            try {
+                const response = await fetch(`${API_BASE}/concepts?query=`);
+                const data = await response.json();
+                
+                updateStatus('totalConcepts', data.concepts.length);
+                log(`Loaded ${data.concepts.length} concepts`, 'success');
+                
+                renderConcepts(data.concepts);
+                return data.concepts;
+            } catch (error) {
+                log(`Error loading concepts: ${error.message}`, 'error');
+                return [];
+            }
+        }
+
+        async function searchConcepts() {
+            const search = document.getElementById('searchInput').value;
+            const category = document.getElementById('categorySelect').value;
+            
+            log(`Searching: "${search}" in category: "${category || 'all'}"`);
+            
+            try {
+                const params = new URLSearchParams();
+                if (search) params.append('query', search);
+                if (category) params.append('category', category);
+                
+                const url = `${API_BASE}/concepts?${params}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                updateStatus('searchResults', data.concepts.length);
+                log(`Search found ${data.concepts.length} results`, 'success');
+                
+                renderConcepts(data.concepts);
+                return data.concepts;
+            } catch (error) {
+                log(`Search error: ${error.message}`, 'error');
+                return [];
+            }
+        }
+
+        function renderConcepts(concepts) {
+            const grid = document.getElementById('searchResults');
+            
+            if (concepts.length === 0) {
+                grid.innerHTML = '<div class="status error">No concepts found</div>';
+                return;
+            }
+            
+            grid.innerHTML = concepts.map(concept => `
+                <div class="concept-card" onclick="askAbout('${concept.name}')">
+                    <div class="concept-name">${concept.name}</div>
+                    <div class="concept-category">${concept.category.replace(/_/g, ' ')}</div>
+                    <div style="margin-top: 5px; font-size: 12px; color: #6c757d;">
+                        Difficulty: ${concept.difficulty_level}/5
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function testSpecificConcept(conceptName) {
+            log(`Testing specific concept: ${conceptName}`);
+            document.getElementById('searchInput').value = conceptName;
+            await searchConcepts();
+        }
+
+        async function testPythonLibraries() {
+            log('Testing Python Libraries category');
+            document.getElementById('categorySelect').value = 'python_libraries';
+            document.getElementById('searchInput').value = '';
+            await searchConcepts();
+        }
+
+        async function testChat() {
+            const message = document.getElementById('chatInput').value;
+            const difficulty = document.getElementById('difficultySelect').value;
+            
+            log(`Chat query: "${message}" (${difficulty})`);
+            
+            try {
+                const response = await fetch(`${API_BASE}/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        user_id: 'debug',
+                        difficulty_level: difficulty
+                    })
+                });
+                
+                const data = await response.json();
+                
+                const result = {
+                    status: response.status,
+                    concepts_covered: data.concepts_covered,
+                    difficulty_level: data.difficulty_level,
+                    source_books: data.source_books.length,
+                    related_concepts: data.related_concepts.length,
+                    response_length: data.content.length,
+                    content_preview: data.content.substring(0, 200) + '...'
+                };
+                
+                document.getElementById('chatResults').textContent = JSON.stringify(result, null, 2);
+                log(`Chat response received (${data.content.length} chars)`, 'success');
+                
+            } catch (error) {
+                log(`Chat error: ${error.message}`, 'error');
+                document.getElementById('chatResults').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function askAbout(topic) {
+            document.getElementById('chatInput').value = `What is ${topic}?`;
+            await testChat();
+        }
+
+        async function testEndpoint(endpoint) {
+            log(`Testing endpoint: ${endpoint}`);
+            
+            try {
+                const url = `${API_BASE}${endpoint}`;
+                const start = performance.now();
+                const response = await fetch(url);
+                const end = performance.now();
+                
+                const data = await response.json();
+                
+                const result = {
+                    endpoint: endpoint,
+                    status: response.status,
+                    response_time: `${(end - start).toFixed(2)}ms`,
+                    data_size: JSON.stringify(data).length,
+                    data_preview: JSON.stringify(data, null, 2).substring(0, 500) + '...'
+                };
+                
+                document.getElementById('apiResults').textContent = JSON.stringify(result, null, 2);
+                log(`${endpoint} responded in ${result.response_time}`, 'success');
+                
+            } catch (error) {
+                log(`${endpoint} error: ${error.message}`, 'error');
+                document.getElementById('apiResults').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function performanceTest() {
+            log('Starting performance test...');
+            const tests = [
+                { name: 'Health Check', url: `${API_BASE}/health` },
+                { name: 'All Concepts', url: `${API_BASE}/concepts?query=` },
+                { name: 'Numpy Search', url: `${API_BASE}/concepts?query=numpy` },
+                { name: 'Python Libs', url: `${API_BASE}/concepts?category=python_libraries` },
+                { name: 'Books API', url: `${API_BASE}/books` }
+            ];
+            
+            const results = [];
+            
+            for (const test of tests) {
+                try {
+                    const start = performance.now();
+                    const response = await fetch(test.url);
+                    const end = performance.now();
+                    const data = await response.json();
+                    
+                    results.push({
+                        test: test.name,
+                        time: `${(end - start).toFixed(2)}ms`,
+                        status: response.status,
+                        size: JSON.stringify(data).length
+                    });
+                    
+                    log(`${test.name}: ${(end - start).toFixed(2)}ms`, 'success');
+                } catch (error) {
+                    results.push({
+                        test: test.name,
+                        error: error.message
+                    });
+                    log(`${test.name}: ERROR - ${error.message}`, 'error');
+                }
+            }
+            
+            document.getElementById('performanceResults').textContent = JSON.stringify(results, null, 2);
+        }
+
+        async function stressTest() {
+            log('Starting stress test (100 requests)...');
+            const promises = [];
+            
+            for (let i = 0; i < 100; i++) {
+                promises.push(fetch(`${API_BASE}/health`));
+            }
+            
+            try {
+                const start = performance.now();
+                const responses = await Promise.all(promises);
+                const end = performance.now();
+                
+                const successful = responses.filter(r => r.ok).length;
+                const failed = responses.length - successful;
+                
+                const result = {
+                    total_requests: 100,
+                    successful: successful,
+                    failed: failed,
+                    total_time: `${(end - start).toFixed(2)}ms`,
+                    avg_time_per_request: `${((end - start) / 100).toFixed(2)}ms`
+                };
+                
+                document.getElementById('performanceResults').textContent = JSON.stringify(result, null, 2);
+                log(`Stress test completed: ${successful}/100 successful`, successful === 100 ? 'success' : 'warning');
+                
+            } catch (error) {
+                log(`Stress test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function sequentialTest() {
+            log('Running sequential test...');
+            
+            const tests = [
+                () => checkServerStatus(),
+                () => loadAllConcepts(),
+                () => testSpecificConcept('numpy'),
+                () => testSpecificConcept('pandas'),
+                () => testPythonLibraries(),
+                () => askAbout('machine learning')
+            ];
+            
+            let passed = 0;
+            let failed = 0;
+            
+            for (let i = 0; i < tests.length; i++) {
+                try {
+                    log(`Sequential test ${i + 1}/${tests.length}...`);
+                    await tests[i]();
+                    passed++;
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Wait between tests
+                } catch (error) {
+                    log(`Sequential test ${i + 1} failed: ${error.message}`, 'error');
+                    failed++;
+                }
+            }
+            
+            const result = {
+                total_tests: tests.length,
+                passed: passed,
+                failed: failed,
+                success_rate: `${((passed / tests.length) * 100).toFixed(1)}%`
+            };
+            
+            document.getElementById('performanceResults').textContent = JSON.stringify(result, null, 2);
+            log(`Sequential test completed: ${passed}/${tests.length} passed`, 'success');
+        }
+
+        function runDiagnostics() {
+            const diagnostics = {
+                user_agent: navigator.userAgent,
+                language: navigator.language,
+                platform: navigator.platform,
+                cookieEnabled: navigator.cookieEnabled,
+                onLine: navigator.onLine,
+                screen_resolution: `${screen.width}x${screen.height}`,
+                viewport: `${window.innerWidth}x${window.innerHeight}`,
+                local_storage: typeof(Storage) !== "undefined",
+                current_url: window.location.href,
+                referrer: document.referrer,
+                timestamp: new Date().toISOString()
+            };
+            
+            document.getElementById('diagnostics').textContent = JSON.stringify(diagnostics, null, 2);
+            log('Browser diagnostics completed', 'info');
+        }
+
+        async function checkCORS() {
+            log('Checking CORS headers...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/health`, {
+                    method: 'OPTIONS'
+                });
+                
+                const corsHeaders = {
+                    'access-control-allow-origin': response.headers.get('access-control-allow-origin'),
+                    'access-control-allow-methods': response.headers.get('access-control-allow-methods'),
+                    'access-control-allow-headers': response.headers.get('access-control-allow-headers')
+                };
+                
+                document.getElementById('diagnostics').textContent = JSON.stringify(corsHeaders, null, 2);
+                log('CORS check completed', 'success');
+                
+            } catch (error) {
+                log(`CORS check failed: ${error.message}`, 'error');
+            }
+        }
+
+        function testLocalStorage() {
+            try {
+                localStorage.setItem('debug_test', 'working');
+                const result = localStorage.getItem('debug_test');
+                localStorage.removeItem('debug_test');
+                
+                log(`Local storage test: ${result === 'working' ? 'PASSED' : 'FAILED'}`, 
+                    result === 'working' ? 'success' : 'error');
+            } catch (error) {
+                log(`Local storage test failed: ${error.message}`, 'error');
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('searchResults').innerHTML = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('categorySelect').value = '';
+            updateStatus('searchResults', 0);
+            log('Results cleared');
+        }
+
+        function clearLog() {
+            logEntries = [];
+            document.getElementById('activityLog').textContent = '';
+            log('Log cleared');
+        }
+
+        function exportLog() {
+            const logText = logEntries.join('\n');
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `debug_log_${new Date().toISOString().split('T')[0]}.txt`;
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            log('Log exported', 'success');
+        }
+
+        // Auto-start diagnostics
+        window.onload = async () => {
+            log('Debug interface loaded', 'success');
+            runDiagnostics();
+            await checkServerStatus();
+            
+            // Auto-load concepts if server is running
+            const serverOk = await checkServerStatus();
+            if (serverOk) {
+                await loadAllConcepts();
+            }
+        };
+    </script>
+</body>
+</html>

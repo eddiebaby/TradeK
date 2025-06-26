@@ -1,0 +1,29 @@
+{
+  "title": "Robust financial calibration: a Bayesian approach for neural SDEs",
+  "authors": [
+    "Christa Cuchiero",
+    "Eva Flonner",
+    "Kevin Kurt"
+  ],
+  "subject": "Quantitative Finance - Neural SDEs - Bayesian Methods",
+  "page_count": 21,
+  "total_characters": 63438,
+  "sections": {
+    "abstract": "The paper presents a Bayesian framework for the calibration of financial models using neural\nstochastic differential equations (neural SDEs). The method is based on the specification of a prior\ndistribution on the neural network weights and an adequately chosen likelihood function. The\nresulting posterior distribution can be seen as a mixture of different classical neural SDE models\nyielding robust bounds on the implied volatility surface. Both, historical financial time series data and\noption price data are taken into consideration, which necessitates a methodology to learn the change\nof measure between the risk-neutral and the historical measure. The key ingredient for a robust\nnumerical optimization of the neural networks is to apply a Langevin-type algorithm, commonly used\nin the Bayesian approaches to draw posterior samples.",
+    "introduction": "In financial institutions, the task of choosing one model from a pool of asset price models, given current market and",
+    "conclusion": "inside 10.\n2 Stochastic volatility models as neural SDEs\nSimilarly as in [ 17], fix T > 0and assume a constant interest rate r∈R. Furthermore consider a parameter space\nΘ = ΘbV×Θσ×ΘσV⊂Rpand functions bV: [0, T]×R×ΘbV→R,σ: [0, T]×R2×Θσ→Rand\nσV: [0, T]×R×ΘσV→R. Let (W1\nt)t∈[0,T]be a standard Brownian motion supported on (Ω,F,(Ft)t∈[0,T],Q).\nConsider the parametric SDE\ndSθ\nt=rSθ\ntdt+σ(t, Sθ\nt, Vθ\nt, θ)Sθ\ntdW1\nt, (1)\ndVθ\nt=bV(t, Vθ\nt, θ)dt+σV(t, Vθ\nt, θ)dW2\nt, (2)\nwhere dW2\nt=ρW1\nt+p\n1−ρ2Zt, with Ztbeing a Brownian motion independent from W1\nt,ρ∈[−1,1]being\nconstant parameter and where (Vθ\nt)t≥0controls the spot variance process in our stochastic volatility model. Note that\nthe model is free of arbitrage by construction, since (e−rtSθ\nt)t∈[0,T]is a local martingale. From now on we will refer\nto the risk-neutral measure, corresponding to the neural network parameters θ, asQ(θ). Furthermore define for all\nt∈[0, T]andθ∈Rp, the functions bandσxby\nb(t,(s, v), θ) := ( rs, bV(t, v, θ ))∈R2andσx(t"
+  },
+  "keywords": [
+    "neural SDE",
+    "Bayesian calibration",
+    "financial modeling",
+    "volatility surface",
+    "option pricing",
+    "uncertainty quantification",
+    "stochastic differential equations",
+    "neural networks"
+  ],
+  "summary": "This paper presents a Bayesian framework for calibrating financial models using neural stochastic differential equations (neural SDEs). The approach provides robust bounds on implied volatility surfaces by incorporating uncertainty quantification through Bayesian inference.",
+  "domain": "quantitative_finance",
+  "subdomain": "neural_sde_calibration"
+}

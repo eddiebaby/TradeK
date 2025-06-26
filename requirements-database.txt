@@ -1,0 +1,43 @@
+# Trade Knowledge Database Requirements
+# Core database dependencies for Phase 1 implementation
+
+# PostgreSQL async driver
+asyncpg>=0.29.0
+
+# Redis async client with high performance extensions
+redis[hiredis]>=5.0.0
+
+# InfluxDB async client
+influxdb-client[async]>=1.40.0
+
+# Environment and configuration
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Async utilities
+asyncio-mqtt>=0.16.0  # For future real-time features
+
+# JSON handling
+orjson>=3.9.0  # Fast JSON serialization
+
+# Logging and monitoring
+structlog>=23.0.0
+prometheus-client>=0.19.0
+
+# Security and hashing
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+
+# Data validation and parsing
+email-validator>=2.0.0
+phonenumbers>=8.13.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+factory-boy>=3.3.0
+
+# Optional: Database migration tools
+alembic>=1.13.0  # For PostgreSQL migrations
+sqlalchemy[asyncio]>=2.0.0  # ORM alternative to raw asyncpg

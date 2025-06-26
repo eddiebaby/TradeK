@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run sparc_orchestrator",
+      "type": "python",
+      "request": "launch",
+      "module": "agents.sparc.sparc_orchestrator",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "console": "integratedTerminal"
+    }
+  ]
+}
+// This configuration is for launching the sparc_orchestrator module in a Python environment.
+// It sets the working directory to the workspace folder and includes the workspace in the PYTHONPATH.
+// The console output will be displayed in the integrated terminal of the IDE.
+// Make sure to adjust the "module" path if your project structure changes.
+// This configuration is useful for debugging or running the sparc_orchestrator module directly from the IDE.   

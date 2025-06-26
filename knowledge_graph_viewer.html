@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TradeKnowledge Knowledge Graph</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 100%;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .mermaid {
+            text-align: center;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 TradeKnowledge System Knowledge Graph</h1>
+        
+        <div class="mermaid">
+graph TB
+    %% Core User & Context
+    subgraph "👤 User Context"
+        U[Scott - Primary User]
+        UP[User Preferences]
+        UW[User Workflow]
+        UR[Personal Relationships]
+    end
+    
+    %% MCP Memory System
+    subgraph "🧠 MCP Memory System"
+        MEM[Memory Server]
+        KG[Knowledge Graph]
+        ENT[Entities: 10 nodes]
+        REL[Relations: 2 connections]
+    end
+    
+    %% SPARC Trio Agents
+    subgraph "🤖 SPARC Trio Agents"
+        R[🔍 RESEARCHER<br/>Intelligence Synthesizer]
+        M[🧠 MASTERMIND<br/>Strategic Architect]
+        E[⚡ EXECUTOR<br/>Implementation Virtuoso]
+    end
+    
+    %% Agent Memory & Communication
+    subgraph "💾 Agent Memory Systems"
+        BB[InfluxDB Blackboard]
+        PM[Persistent Memory]
+        AC[Agent Communication]
+        WM[Working Memory]
+        EM[Episodic Memory]
+        SM[Semantic Memory]
+        PRM[Procedural Memory]
+    end
+    
+    %% Data Storage Systems
+    subgraph "🗄️ Data Storage"
+        QD[Qdrant Vector DB<br/>tradeknowledge collection<br/>768-dim vectors]
+        CD[ChromaDB<br/>Document Embeddings]
+        KB[Knowledge.db<br/>SQLite Database]
+        FS[File System<br/>Document Storage]
+    end
+    
+    %% MCP Servers
+    subgraph "🔌 MCP Server Ecosystem"
+        MCP1[filesystem]
+        MCP2[sqlite]
+        MCP3[github]
+        MCP4[perplexity]
+        MCP5[zen-mcp-server]
+        MCP6[context7]
+        MCP7[sequential-thinking]
+        MCP8[memory]
+    end
+    
+    %% Financial Knowledge Domain
+    subgraph "💰 Financial Knowledge"
+        TK[TradeKnowledge Core]
+        SA[Stock Analysis Engine]
+        MD[Market Data Integration]
+        PA[Premium Analysis<br/>GOOGL, SPX, LQDA]
+        API[Schwab API Integration]
+    end
+    
+    %% External Integrations
+    subgraph "🌐 External Systems"
+        OLL[Ollama LLM Integration<br/>qwen3:8b, llama2:13b<br/>mixtral:8x7b]
+        LLM[LLMLingua Compression<br/>20x reduction]
+        PR[Prompt Repository<br/>GitHub-like platform]
+    end
+    
+    %% FIRE Command System
+    subgraph "🔥 FIRE Command System"
+        FC[FIRE Command]
+        FI[/project:fire]
+        QG[Quality Gates<br/>98% coverage, 90% mutation]
+        HE[Health Endpoints<br/>/health, /live, /ready]
+    end
+    
+    %% Connections - User Context
+    U --> UP
+    U --> UW
+    U --> UR
+    
+    %% Connections - Memory System
+    U --> MEM
+    MEM --> KG
+    KG --> ENT
+    KG --> REL
+    
+    %% Connections - SPARC Trio
+    R --> BB
+    M --> BB
+    E --> BB
+    BB --> PM
+    PM --> WM
+    PM --> EM
+    PM --> SM
+    PM --> PRM
+    
+    %% Connections - Agent Communication
+    R <--> AC
+    M <--> AC
+    E <--> AC
+    AC --> BB
+    
+    %% Connections - Data Storage
+    R --> QD
+    M --> CD
+    E --> KB
+    TK --> QD
+    TK --> CD
+    TK --> KB
+    FS --> KB
+    
+    %% Connections - MCP Integration
+    MCP1 --> FS
+    MCP2 --> KB
+    MCP3 --> API
+    MCP4 --> SA
+    MCP5 --> OLL
+    MCP6 --> PR
+    MCP7 --> R
+    MCP8 --> MEM
+    
+    %% Connections - Financial Domain
+    SA --> MD
+    SA --> PA
+    MD --> API
+    TK --> SA
+    
+    %% Connections - External Systems
+    R --> OLL
+    M --> LLM
+    E --> PR
+    
+    %% Connections - FIRE System
+    FC --> R
+    FC --> M
+    FC --> E
+    FI --> FC
+    FC --> QG
+    FC --> HE
+    
+    %% Styling
+    classDef userNode fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef agentNode fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef memoryNode fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef dataNode fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef mcpNode fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef finNode fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    classDef fireNode fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    
+    class U,UP,UW,UR userNode
+    class R,M,E agentNode
+    class BB,PM,AC,WM,EM,SM,PRM,MEM,KG,ENT,REL memoryNode
+    class QD,CD,KB,FS dataNode
+    class MCP1,MCP2,MCP3,MCP4,MCP5,MCP6,MCP7,MCP8 mcpNode
+    class TK,SA,MD,PA,API finNode
+    class FC,FI,QG,HE fireNode
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+    </script>
+</body>
+</html>
