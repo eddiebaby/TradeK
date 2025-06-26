@@ -1,0 +1,45 @@
+{
+  "mcpServers": {
+    "puppeteer": {
+      "command": "node",
+      "args": ["/home/scottschweizer/TradeKnowledge/mcp-servers/puppeteer/dist/index.js"],
+      "env": {
+        "PUPPETEER_LAUNCH_OPTIONS": "{ \"headless\": true, \"args\": [\"--no-sandbox\", \"--disable-dev-shm-usage\"] }",
+        "ALLOW_DANGEROUS": "true"
+      }
+    }
+  },
+  "capabilities": {
+    "tools": [
+      "puppeteer_navigate",
+      "puppeteer_screenshot",
+      "puppeteer_click", 
+      "puppeteer_hover",
+      "puppeteer_fill",
+      "puppeteer_select",
+      "puppeteer_evaluate"
+    ],
+    "resources": [
+      "console://logs",
+      "screenshot://<name>"
+    ]
+  },
+  "use_cases": {
+    "market_intelligence": {
+      "description": "Scrape financial websites for real-time market data",
+      "tools": ["puppeteer_navigate", "puppeteer_screenshot", "puppeteer_evaluate"]
+    },
+    "news_monitoring": {
+      "description": "Monitor financial news websites and capture updates",
+      "tools": ["puppeteer_navigate", "puppeteer_screenshot", "puppeteer_click"]
+    },
+    "document_verification": {
+      "description": "Navigate to regulatory websites and verify document availability",
+      "tools": ["puppeteer_navigate", "puppeteer_fill", "puppeteer_click", "puppeteer_screenshot"]
+    },
+    "competitor_analysis": {
+      "description": "Gather competitive intelligence from public websites",
+      "tools": ["puppeteer_navigate", "puppeteer_evaluate", "puppeteer_screenshot"]
+    }
+  }
+}

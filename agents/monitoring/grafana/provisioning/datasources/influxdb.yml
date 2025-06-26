@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: AgentBlackboard
+    type: influxdb
+    access: proxy
+    url: http://host.docker.internal:8087
+    basicAuth: false
+    isDefault: true
+    jsonData:
+      version: Flux
+      organization: AgentBlackboard
+      defaultBucket: blackboard
+      tlsSkipVerify: true
+    secureJsonData:
+      token: blackboard-super-secret-auth-token
+    editable: true

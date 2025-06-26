@@ -1,0 +1,96 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/scott/TradeKnowledge"
+      ],
+      "env": {}
+    },
+    "sqlite": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "--db-path",
+        "/home/scott/TradeKnowledge/data/knowledge.db"
+      ],
+      "env": {}
+    },
+    "github": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "$GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
+        "-e",
+        "GITHUB_READ_ONLY",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "$GITHUB_PERSONAL_ACCESS_TOKEN",
+        "GITHUB_TOOLSETS": "$GITHUB_TOOLSETS",
+        "GITHUB_READ_ONLY": "$GITHUB_READ_ONLY"
+      }
+    },
+    "perplexity": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/home/scott/TradeKnowledge/perplexity-mcp/src/perplexity_mcp/server.py"
+      ],
+      "env": {
+        "PERPLEXITY_API_KEY": "$PERPLEXITY_API_KEY",
+        "PERPLEXITY_MODEL": "$PERPLEXITY_MODEL",
+        "PYTHONPATH": "/home/scott/TradeKnowledge/perplexity-mcp/src"
+      }
+    },
+    "zen-mcp-server": {
+      "type": "stdio",
+      "command": "/home/scott/TradeKnowledge/mcp-management/servers/zen-mcp-server/.zen_venv/bin/python",
+      "args": [
+        "server.py"
+      ],
+      "env": {
+        "GEMINI_API_KEY": "$GEMINI_API_KEY"
+      },
+      "cwd": "/home/scott/TradeKnowledge/mcp-management/servers/zen-mcp-server"
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "env": {}
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "env": {}
+    },
+    "memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,226 @@
+# Stock Analysis Configuration for RESEARCHER Agent
+# CrewAI-inspired multi-agent stock analysis setup
+
+stock_analysis:
+  # Agent Configuration
+  agents:
+    financial_analyst:
+      role: "Senior Financial Analyst"
+      goal: "Provide comprehensive financial metrics analysis and valuation insights"
+      backstory: "Expert in financial statement analysis, ratio calculations, and valuation models"
+      capabilities:
+        - financial_metrics_analysis
+        - ratio_calculations
+        - valuation_modeling
+        - peer_comparison
+      
+    market_researcher:
+      role: "Market Intelligence Analyst" 
+      goal: "Gather and synthesize market sentiment, news, and analyst opinions"
+      backstory: "Specialist in market sentiment analysis, news interpretation, and social intelligence"
+      capabilities:
+        - news_sentiment_analysis
+        - analyst_ratings_synthesis
+        - social_media_monitoring
+        - market_trend_identification
+        
+    regulatory_analyst:
+      role: "SEC Filing Specialist"
+      goal: "Extract key insights from regulatory filings and compliance documents"
+      backstory: "Expert in SEC filing analysis, regulatory interpretation, and compliance assessment"
+      capabilities:
+        - sec_filing_analysis
+        - regulatory_risk_assessment
+        - compliance_monitoring
+        - management_analysis
+        
+    technical_analyst:
+      role: "Technical Analysis Expert"
+      goal: "Identify price patterns, technical indicators, and trading signals"
+      backstory: "Specialist in chart analysis, technical indicators, and quantitative trading signals"
+      capabilities:
+        - price_pattern_recognition
+        - technical_indicator_analysis
+        - support_resistance_identification
+        - trend_analysis
+        
+    risk_analyst:
+      role: "Investment Risk Specialist"
+      goal: "Assess investment risks and provide risk management recommendations"
+      backstory: "Expert in risk modeling, portfolio theory, and risk mitigation strategies"
+      capabilities:
+        - risk_assessment
+        - portfolio_optimization
+        - stress_testing
+        - risk_mitigation
+
+  # Analysis Domains Configuration
+  domains:
+    financial_metrics:
+      priority: high
+      confidence_threshold: 0.85
+      key_metrics:
+        - pe_ratio
+        - eps_growth
+        - revenue_growth
+        - debt_to_equity
+        - roe
+        - profit_margin
+        - free_cash_flow
+        - book_value
+      
+    market_sentiment:
+      priority: high
+      confidence_threshold: 0.80
+      data_sources:
+        - news_sentiment
+        - analyst_ratings
+        - social_media
+        - options_flow
+      
+    sec_filings:
+      priority: medium
+      confidence_threshold: 0.85
+      filing_types:
+        - "10-K"
+        - "10-Q"
+        - "8-K"
+        - "DEF 14A"
+      
+    technical_analysis:
+      priority: medium
+      confidence_threshold: 0.75
+      indicators:
+        - rsi
+        - macd
+        - moving_averages
+        - bollinger_bands
+        - volume_analysis
+      
+    competitive_analysis:
+      priority: medium
+      confidence_threshold: 0.80
+      analysis_areas:
+        - market_position
+        - competitive_advantages
+        - peer_comparison
+        - market_share
+      
+    risk_assessment:
+      priority: high
+      confidence_threshold: 0.85
+      risk_categories:
+        - financial_risk
+        - market_risk
+        - operational_risk
+        - regulatory_risk
+        - valuation_risk
+
+  # API Configuration
+  apis:
+    sec_api:
+      base_url: "https://api.sec-api.io"
+      rate_limit: 10  # requests per second
+      timeout: 30
+      retry_attempts: 3
+      
+    financial_data:
+      # Placeholder for financial data API (Alpha Vantage, IEX Cloud, etc.)
+      provider: "alpha_vantage"
+      rate_limit: 5
+      timeout: 15
+      
+    news_sentiment:
+      # Placeholder for news API (NewsAPI, Polygon, etc.)
+      provider: "newsapi"
+      rate_limit: 100  # requests per day
+      timeout: 10
+
+  # Ollama Model Configuration
+  ollama:
+    model: "llama3.1"
+    base_url: "http://localhost:11434"
+    temperature: 0.1  # Low temperature for financial analysis
+    max_tokens: 2048
+    timeout: 120
+    
+  # Analysis Parameters
+  analysis:
+    default_depth: "comprehensive"
+    default_time_horizon: "medium_term"
+    confidence_threshold: 0.80
+    minimum_data_sources: 3
+    
+    scoring:
+      financial_weight: 0.25
+      sentiment_weight: 0.20
+      technical_weight: 0.20
+      competitive_weight: 0.20
+      risk_weight: 0.15
+      
+    recommendations:
+      strong_buy_threshold: 8.0
+      buy_threshold: 7.0
+      hold_threshold: 6.0
+      weak_hold_threshold: 4.0
+      
+  # Risk Management
+  risk_management:
+    max_position_size: 0.05  # 5% of portfolio
+    stop_loss_threshold: 0.15  # 15% loss
+    profit_taking_threshold: 0.25  # 25% gain
+    rebalancing_frequency: "monthly"
+    
+  # Quality Controls
+  quality_controls:
+    data_freshness_hours: 24
+    minimum_confidence: 0.75
+    cross_validation_sources: 2
+    outlier_detection: true
+    
+  # Output Formats
+  output:
+    formats:
+      - "detailed_report"
+      - "executive_summary"
+      - "json_structured"
+      - "strategy_format"
+      - "implementation_format"
+      
+    sections:
+      - executive_summary
+      - financial_analysis
+      - market_sentiment
+      - technical_analysis
+      - competitive_position
+      - risk_assessment
+      - investment_recommendation
+      - portfolio_allocation
+      - monitoring_plan
+
+# Environment Variables Required
+environment_variables:
+  SEC_API_KEY: "Required for SEC filing access"
+  FINANCIAL_DATA_API_KEY: "Required for market data"
+  NEWS_API_KEY: "Required for news sentiment"
+  OLLAMA_HOST: "http://localhost:11434"
+  
+# Example Usage Patterns
+usage_examples:
+  comprehensive_analysis:
+    ticker: "AAPL"
+    domains: ["financial_metrics", "market_sentiment", "sec_filings", "technical_analysis", "risk_assessment"]
+    depth: "comprehensive"
+    time_horizon: "long_term"
+    
+  quick_screening:
+    ticker: "MSFT"
+    domains: ["financial_metrics", "market_sentiment"]
+    depth: "standard"
+    time_horizon: "short_term"
+    
+  risk_focused:
+    ticker: "TSLA"
+    domains: ["risk_assessment", "market_sentiment", "technical_analysis"]
+    depth: "comprehensive"
+    time_horizon: "medium_term"

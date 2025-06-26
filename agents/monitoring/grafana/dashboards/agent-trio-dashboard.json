@@ -1,0 +1,117 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Agent Trio Monitoring Dashboard",
+    "tags": ["agents", "trio", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Agent Task Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "from(bucket: \"tasks\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"task\")\n  |> group(columns: [\"agent\"])\n  |> count()",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "displayMode": "list",
+              "orientation": "horizontal"
+            },
+            "mappings": [],
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 80}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Agent Success Rates",
+        "type": "piechart",
+        "targets": [
+          {
+            "query": "from(bucket: \"metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"performance\")\n  |> filter(fn: (r) => r._field == \"success_rate\")\n  |> group(columns: [\"agent\"])\n  |> last()",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Task Processing Timeline",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "from(bucket: \"tasks\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"task\")\n  |> filter(fn: (r) => r._field == \"status\")\n  |> aggregateWindow(every: 5m, fn: count, createEmpty: false)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "barAlignment": 0,
+              "lineWidth": 1,
+              "fillOpacity": 10,
+              "gradientMode": "none"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Agent Performance Metrics",
+        "type": "table",
+        "targets": [
+          {
+            "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"performance\")\n  |> group(columns: [\"agent\"])\n  |> last()\n  |> yield(name: \"last\")",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Token Usage Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "from(bucket: \"metrics\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"performance\")\n  |> filter(fn: (r) => r._field == \"tokens\")\n  |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 6,
+        "title": "Agent Efficiency Scores",
+        "type": "gauge",
+        "targets": [
+          {
+            "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"performance\")\n  |> filter(fn: (r) => r._field == \"efficiency_score\")\n  |> group(columns: [\"agent\"])\n  |> last()",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      }
+    ],
+    "time": {"from": "now-6h", "to": "now"},
+    "refresh": "5s",
+    "schemaVersion": 27,
+    "version": 0
+  }
+}

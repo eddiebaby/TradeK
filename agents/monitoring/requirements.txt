@@ -1,0 +1,9 @@
+# Web Monitoring Stack Requirements
+Flask==2.3.3
+Flask-CORS==4.0.0
+streamlit==1.28.1
+pandas==2.1.4
+plotly==5.17.0
+pyyaml==6.0.1
+influxdb-client==1.38.0
+requests==2.31.0
