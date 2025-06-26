@@ -1,0 +1,5 @@
+#!/bin/bash
+# 🔥 FIRE Command Wrapper
+# This script can be called as just "fire" from anywhere
+
+exec python3 "$(dirname "$0")/fire_command.py" "$@"
