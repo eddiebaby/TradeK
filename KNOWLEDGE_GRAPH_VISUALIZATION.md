@@ -78,9 +78,9 @@ graph TB
     %% FIRE Command System
     subgraph "🔥 FIRE Command System"
         FC[FIRE Command]
-        FI[/project:fire]
+        FI["project:fire command"]
         QG["Quality Gates|98% coverage, 90% mutation"]
-        HE["Health Endpoints|/health, /live, /ready"]
+        HE["Health Endpoints|health, live, ready"]
     end
     
     %% Connections - User Context
