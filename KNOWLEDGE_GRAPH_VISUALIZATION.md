@@ -73,6 +73,16 @@ graph TB
         OLL["Ollama LLM Integration|qwen3:8b, llama2:13b|mixtral:8x7b"]
         LLM["LLMLingua Compression|20x reduction"]
         PR["Prompt Repository|GitHub-like platform"]
+        HVS["Hybrid Vectorization System|40-60% compression"]
+        LLC["LLMLingua Compression Pipeline|Qwen2.5-Coder"]
+    end
+    
+    %% Academic Paper Processing
+    subgraph "📚 Academic Research Processing"
+        LPA["LongLLMLingua Paper Analysis|Trading confidence: 80%"]
+        APM["Academic Paper Processing|5-stage pipeline"]
+        TIE["Trading Intelligence Extraction|HFT optimization"]
+        RIB["Research-to-Implementation|Bridge"]
     end
     
     %% FIRE Command System
@@ -81,6 +91,8 @@ graph TB
         FI["project:fire command"]
         QG["Quality Gates|98% coverage, 90% mutation"]
         HE["Health Endpoints|health, live, ready"]
+        STC["SPARC Trio Integration|Context isolation"]
+        SWO["Scott's Workflow|Off-grid optimization"]
     end
     
     %% Connections - User Context
@@ -139,6 +151,19 @@ graph TB
     R --> OLL
     M --> LLM
     E --> PR
+    R --> HVS
+    HVS --> LLC
+    LLC --> LLM
+    
+    %% Connections - Academic Paper Processing
+    R --> LPA
+    LPA --> APM
+    APM --> TIE
+    TIE --> RIB
+    RIB --> UW
+    APM --> LLC
+    LPA --> HVS
+    HVS --> TK
     
     %% Connections - FIRE System
     FC --> R
@@ -147,6 +172,13 @@ graph TB
     FI --> FC
     FC --> QG
     FC --> HE
+    FC --> STC
+    STC --> HVS
+    SWO --> HVS
+    SWO --> U
+    STC --> R
+    STC --> M
+    STC --> E
     
     %% Styling
     classDef userNode fill:#e1f5fe,stroke:#01579b,stroke-width:2px
@@ -156,6 +188,8 @@ graph TB
     classDef mcpNode fill:#fce4ec,stroke:#880e4f,stroke-width:2px
     classDef finNode fill:#f1f8e9,stroke:#33691e,stroke-width:2px
     classDef fireNode fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef academicNode fill:#e8eaf6,stroke:#283593,stroke-width:2px
+    classDef externalNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     
     class U,UP,UW,UR userNode
     class R,M,E agentNode
@@ -163,12 +197,14 @@ graph TB
     class QD,CD,KB,FS dataNode
     class MCP1,MCP2,MCP3,MCP4,MCP5,MCP6,MCP7,MCP8 mcpNode
     class TK,SA,MD,PA,API finNode
-    class FC,FI,QG,HE fireNode
+    class FC,FI,QG,HE,STC,SWO fireNode
+    class LPA,APM,TIE,RIB academicNode
+    class OLL,LLM,PR,HVS,LLC externalNode
 ```
 
 ## 🗃️ **Current Knowledge Graph State**
 
-### **📋 Entities in Memory Graph (10 nodes)**
+### **📋 Entities in Memory Graph (26 nodes)**
 
 | Entity | Type | Key Observations |
 |--------|------|------------------|
@@ -183,10 +219,48 @@ graph TB
 | `User Preferences` | system_requirements | Security requirements for system administration |
 | `LLMLingua Documentation` | technical_documentation | 20x compression, GPU requirements, performance metrics |
 | `GPU Processing Requirements` | system_requirements | Default to GPU processing, enable acceleration |
+| `Bedrock Migration Plan` | future_project | Complete migration strategy to Amazon Bedrock with hybrid approach |
+| `LongLLMLingua Research Paper` | academic_research | ACL 2024 paper on prompt compression for LLM optimization |
+| `Prompt Compression Technology` | technical_solution | 20x compression with minimal performance loss |
+| `Hybrid Vectorization System` | technical_solution | Smart routing between local and OpenAI embeddings |
+| `OpenAI Quota Optimization` | cost_optimization | Strategic 1GB quota management with compression |
+| `LLMLingua Compression Pipeline` | Academic Paper Processing | Qwen2.5-Coder integration for content compression |
+| `SPARC Trio Integration Context` | System Integration | Enhanced workflow with knowledge graph loading |
+| `Performance Optimization Metrics` | Performance Data | 40-60% compression ratios with quality preservation |
+| `Scott's Workflow Optimization` | User Context | Off-grid development with multi-device synchronization |
+| `MCP Fetch Server` | software_tool | Web content fetching with markdown conversion |
+| `Financial Datasets MCP Server` | software_tool | Financial data integration with API access |
+| `UV Package Manager` | development_tool | Modern Python dependency management |
+| `MCP Protocol` | technology_standard | Model Context Protocol for AI tool integration |
+| `LongLLMLingua Paper Analysis` | Academic Research Processing | Comprehensive trading relevance analysis |
+| `Academic Paper Processing Methodology` | Research Workflow | 5-stage processing pipeline for research papers |
+| `Trading Intelligence Extraction` | Financial Application Analysis | Cost optimization for trading systems |
+| `Research-to-Implementation Bridge` | Knowledge Translation | Academic research to practical application |
 
-### **🔗 Relationships (2 connections)**
+### **🔗 Relationships (22 connections)**
 - `user_scott` ➜ `has_relationship` ➜ `scott_aunt_relationship`
 - `TradeKnowledge_MCP_Session_State` ➜ `belongs_to` ➜ `User_Personal_Context`
+- `LongLLMLingua Research Paper` ➜ `introduces` ➜ `Prompt Compression Technology`
+- `Prompt Compression Technology` ➜ `can_optimize` ➜ `TradeKnowledge Ollama System`
+- `user_scott` ➜ `should_implement` ➜ `LongLLMLingua Research Paper`
+- `Prompt Compression Technology` ➜ `enhances` ➜ `Bedrock Migration Plan`
+- `Hybrid Vectorization System` ➜ `implements_insights_from` ➜ `LongLLMLingua Research Paper`
+- `Hybrid Vectorization System` ➜ `optimizes_workflow_for` ➜ `user_scott`
+- `OpenAI Quota Optimization Strategy` ➜ `is_core_component_of` ➜ `Hybrid Vectorization System`
+- `Hybrid Vectorization System` ➜ `enhances` ➜ `TradeKnowledge Ollama System`
+- `Hybrid Vectorization System` ➜ `provides_alternative_to` ➜ `Bedrock Migration Plan`
+- `Hybrid Vectorization System` ➜ `integrates with` ➜ `LLMLingua Compression Pipeline`
+- `Hybrid Vectorization System` ➜ `enhances` ➜ `SPARC Trio Integration Context`
+- `LLMLingua Compression Pipeline` ➜ `achieves` ➜ `Performance Optimization Metrics`
+- `SPARC Trio Integration Context` ➜ `optimizes` ➜ `Scott's Workflow Optimization`
+- `Scott's Workflow Optimization` ➜ `requires` ➜ `Hybrid Vectorization System`
+- `Performance Optimization Metrics` ➜ `supports` ➜ `Scott's Workflow Optimization`
+- `LongLLMLingua Paper Analysis` ➜ `demonstrates` ➜ `Academic Paper Processing Methodology`
+- `Academic Paper Processing Methodology` ➜ `enables` ➜ `Trading Intelligence Extraction`
+- `Trading Intelligence Extraction` ➜ `creates` ➜ `Research-to-Implementation Bridge`
+- `LongLLMLingua Paper Analysis` ➜ `validates` ➜ `Hybrid Vectorization System`
+- `Research-to-Implementation Bridge` ➜ `enhances` ➜ `Scott's Workflow Optimization`
+- `Academic Paper Processing Methodology` ➜ `utilizes` ➜ `LLMLingua Compression Pipeline`
 
 ## 💾 **Data Storage Analysis**
 
@@ -289,8 +363,10 @@ graph TB
 ---
 
 **🧠 Knowledge Graph Status**: **Healthy & Growing**
-- **10 entities** with rich contextual information
-- **2 relationships** with room for expansion
-- **8 MCP servers** providing diverse data sources
-- **Multiple storage systems** for different data types
-- **Production-ready** monitoring and health systems
+- **26 entities** with rich contextual information across multiple domains
+- **22 relationships** showing strong interconnections between systems
+- **8 MCP servers** providing diverse data sources and capabilities
+- **New academic research processing** pipeline for intelligent paper analysis
+- **Advanced compression technology** with 40-60% optimization ratios
+- **Multiple storage systems** for different data types and use cases
+- **Production-ready** monitoring and health systems with quality gates

@@ -130,6 +130,15 @@ class HybridModelRouter:
         """Load model configurations"""
         return {
             # Ollama models
+            "qwen2.5-coder:7b": ModelConfig(
+                name="qwen2.5-coder:7b",
+                type="ollama", 
+                endpoint="localhost:11434",
+                max_tokens=4000,
+                cost_per_token=0.0,
+                avg_response_time=2.5,  # Faster than codellama
+                quality_score=0.90     # Higher quality for coding
+            ),
             "codellama:13b": ModelConfig(
                 name="codellama:13b",
                 type="ollama",
@@ -222,7 +231,11 @@ class HybridModelRouter:
             "implementation": 1.5,
             "testing": 1.2,
             "code_review": 1.3,
-            "documentation": 1.1
+            "documentation": 1.1,
+            "ml_trading_strategy": 2.0,
+            "python_coding": 1.4,
+            "algorithm_development": 1.6,
+            "backtesting": 1.5
         }
         
         multiplier = operation_multipliers.get(task.operation, 1.5)
@@ -261,10 +274,17 @@ class HybridModelRouter:
     def select_model(self, task: TaskContext, choice: ModelChoice) -> str:
         """Select specific model based on routing choice"""
         if choice == ModelChoice.LOCAL_OLLAMA:
-            # Select best local model for task type
-            if task.operation in ["implementation", "testing", "code_review"]:
-                return "codellama:13b"
-            elif task.assess_complexity(task) > 0.6:
+            # Prioritize Qwen2.5-Coder for coding tasks
+            if task.operation in ["implementation", "testing", "code_review"] or \
+               "python" in task.description.lower() or \
+               "ml" in task.description.lower() or \
+               "trading" in task.description.lower() or \
+               "algorithm" in task.description.lower():
+                if "qwen2.5-coder:7b" in self.ollama_client.available_models:
+                    return "qwen2.5-coder:7b"
+                else:
+                    return "codellama:13b"
+            elif self.assess_complexity(task) > 0.6:
                 return "mixtral:8x7b" if "mixtral:8x7b" in self.ollama_client.available_models else "llama2:13b"
             else:
                 return "llama2:13b"
