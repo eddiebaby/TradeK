@@ -21,6 +21,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - OLLAMA_HOST=http://ollama:11434
+      # InfluxDB configuration for ML backfill
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_ADMIN_TOKEN:-tradeknowledge-super-secret-token}
+      - INFLUXDB_ORG=${INFLUXDB_ORG:-tradeknowledge}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-market_data}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -29,6 +34,7 @@ services:
       - qdrant
       - redis
       - ollama
+      - influxdb
     networks:
       - tradeknowledge
 
@@ -135,6 +141,80 @@ services:
     networks:
       - tradeknowledge
 
+  # InfluxDB for ML-ready time-series data
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: tradeknowledge-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      # Initial setup configuration
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-tradeknowledge123}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-tradeknowledge}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-market_data}
+      - DOCKER_INFLUXDB_INIT_RETENTION=${INFLUXDB_RETENTION:-0s}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN:-tradeknowledge-super-secret-token}
+      # Performance and storage configuration
+      - INFLUXD_ENGINE_PATH=/var/lib/influxdb2
+      - INFLUXD_BOLT_PATH=/var/lib/influxdb2/influxd.bolt
+      - INFLUXD_REPORTING_DISABLED=true
+      # ML workload optimizations
+      - INFLUXD_QUERY_CONCURRENCY=10
+      - INFLUXD_QUERY_QUEUE_SIZE=1000
+      - INFLUXD_HTTP_WRITE_TIMEOUT=30s
+      - INFLUXD_HTTP_READ_TIMEOUT=30s
+    volumes:
+      # Persistent data storage
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+      # Initialization scripts
+      - ./docker/influxdb/init:/docker-entrypoint-initdb.d:ro
+      # Backup directory
+      - ./data/influxdb-backups:/backups
+    command: |
+      bash -c "
+        # Start InfluxDB in background
+        /entrypoint.sh influxd &
+        INFLUX_PID=$$!
+        
+        # Wait for InfluxDB to be ready
+        echo 'Waiting for InfluxDB to start...'
+        while ! curl -s http://localhost:8086/health | grep -q 'ready'; do
+          sleep 2
+        done
+        
+        # Run initialization scripts if they exist
+        if [ -d /docker-entrypoint-initdb.d ]; then
+          echo 'Running initialization scripts...'
+          for script in /docker-entrypoint-initdb.d/*.sh; do
+            if [ -f \"$$script\" ]; then
+              echo \"Executing $$script\"
+              bash \"$$script\"
+            fi
+          done
+        fi
+        
+        # Keep InfluxDB running
+        wait $$INFLUX_PID
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - tradeknowledge
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
 volumes:
   qdrant_data:
   redis_data:
@@ -142,6 +222,8 @@ volumes:
   prometheus_data:
   grafana_data:
   nginx_logs:
+  influxdb_data:
+  influxdb_config:
 
 networks:
   tradeknowledge:

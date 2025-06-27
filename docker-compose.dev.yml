@@ -1,0 +1,64 @@
+# Docker Compose Development Override
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+version: '3.8'
+
+services:
+  # Development API with hot reload
+  tradeknowledge-api:
+    build:
+      target: development
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # Debug port
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      # Use containerized InfluxDB in development
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=tradeknowledge-super-secret-token
+      - INFLUXDB_ORG=tradeknowledge
+      - INFLUXDB_BUCKET=market_data
+    volumes:
+      - .:/app
+      - /app/venv  # Exclude venv from mount
+    command: ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]
+    depends_on:
+      - influxdb
+      - redis
+      - qdrant
+
+  # InfluxDB with development settings
+  influxdb:
+    environment:
+      # Development-specific InfluxDB settings
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=dev123
+      - DOCKER_INFLUXDB_INIT_ORG=tradeknowledge-dev
+      - DOCKER_INFLUXDB_INIT_BUCKET=dev_market_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=dev-token-123
+      - INFLUXD_LOG_LEVEL=debug
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Skip resource-intensive services in development
+  ollama:
+    profiles: ["full"]
+  
+  prometheus:
+    profiles: ["monitoring"]
+  
+  grafana:
+    profiles: ["monitoring"]
+  
+  nginx:
+    profiles: ["production"]
+
+# Development-specific volumes
+volumes:
+  dev_influxdb_data:
+  dev_influxdb_config:

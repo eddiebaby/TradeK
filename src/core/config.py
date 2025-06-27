@@ -177,6 +177,65 @@ class AuthConfig(BaseModel):
     lockout_duration_minutes: int = 15
 
 
+class InfluxDBConfig(BaseModel):
+    """InfluxDB configuration for time-series market data"""
+
+    url: str = Field(default_factory=lambda: os.getenv("INFLUXDB_URL", "http://localhost:8086"))
+    token: str = Field(default_factory=lambda: os.getenv("INFLUXDB_TOKEN", ""))
+    org: str = Field(default_factory=lambda: os.getenv("INFLUXDB_ORG", "tradeknowledge"))
+    bucket: str = Field(default_factory=lambda: os.getenv("INFLUXDB_BUCKET", "market_data"))
+    timeout: int = Field(
+        default_factory=lambda: _safe_int(os.getenv("INFLUXDB_TIMEOUT", "30"), 30)
+    )
+    batch_size: int = Field(
+        default_factory=lambda: _safe_int(os.getenv("INFLUXDB_BATCH_SIZE", "10000"), 10000)
+    )
+    max_retries: int = Field(
+        default_factory=lambda: _safe_int(os.getenv("INFLUXDB_MAX_RETRIES", "3"), 3)
+    )
+    enable_gzip: bool = Field(
+        default_factory=lambda: os.getenv("INFLUXDB_ENABLE_GZIP", "true").lower() == "true"
+    )
+
+    @property
+    def connection_params(self) -> dict:
+        """Get InfluxDB connection parameters"""
+        return {
+            "url": self.url,
+            "token": self.token,
+            "org": self.org,
+            "timeout": self.timeout * 1000,  # Convert to milliseconds
+            "enable_gzip": self.enable_gzip
+        }
+
+
+class EquityDataConfig(BaseModel):
+    """Configuration for equity data sources"""
+
+    polygon_api_key: str = Field(default_factory=lambda: os.getenv("POLYGON_API_KEY", ""))
+    alpha_vantage_key: str = Field(default_factory=lambda: os.getenv("ALPHA_VANTAGE_KEY", ""))
+    influxdb_url: str = Field(default_factory=lambda: os.getenv("INFLUXDB_URL", "http://localhost:8086"))
+    influxdb_token: str = Field(default_factory=lambda: os.getenv("INFLUXDB_TOKEN", ""))
+    influxdb_org: str = Field(default_factory=lambda: os.getenv("INFLUXDB_ORG", "tradeknowledge"))
+    influxdb_bucket: str = Field(default_factory=lambda: os.getenv("INFLUXDB_BUCKET", "market_data"))
+    rate_limit_per_minute: int = Field(
+        default_factory=lambda: _safe_int(os.getenv("EQUITY_RATE_LIMIT", "5"), 5)
+    )
+
+
+class CryptoDataConfig(BaseModel):
+    """Configuration for cryptocurrency data sources"""
+
+    kraken_api_key: str = Field(default_factory=lambda: os.getenv("KRAKEN_API_KEY", ""))
+    kraken_secret: str = Field(default_factory=lambda: os.getenv("KRAKEN_SECRET", ""))
+    coinbase_api_key: str = Field(default_factory=lambda: os.getenv("COINBASE_API_KEY", ""))
+    coinbase_secret: str = Field(default_factory=lambda: os.getenv("COINBASE_SECRET", ""))
+    coinbase_passphrase: str = Field(default_factory=lambda: os.getenv("COINBASE_PASSPHRASE", ""))
+    rate_limit_per_minute: int = Field(
+        default_factory=lambda: _safe_int(os.getenv("CRYPTO_RATE_LIMIT", "10"), 10)
+    )
+
+
 class ApiConfig(BaseModel):
     """API server configuration"""
 
@@ -201,6 +260,11 @@ class ApiConfig(BaseModel):
     max_concurrent_uploads: int = Field(
         default_factory=lambda: _safe_int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"), 3)
     )
+    
+    # Data source configurations
+    influxdb: InfluxDBConfig = Field(default_factory=InfluxDBConfig)
+    equity_data: EquityDataConfig = Field(default_factory=EquityDataConfig)
+    crypto_data: CryptoDataConfig = Field(default_factory=CryptoDataConfig)
 
 
 class Config(BaseModel):

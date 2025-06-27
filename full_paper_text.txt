@@ -1,0 +1,1241 @@
+
+--- Page 1 ---
+ROBUST FINANCIAL CALIBRATION :ABAYESIAN APPROACH FOR
+NEURAL SDE S
+A P REPRINT
+Christa Cuchiero∗
+University of Vienna,
+Department of Statistics and Operations Research,
+Kolingasse 14, 1090 Vienna, Austria
+christa.cuchiero@univie.ac.atEva Flonner
+Vienna University of Economics and Business,
+Institute for Statistics and Mathematics,
+Welthandelsplatz 1, 1020 Vienna, Austria
+eva.flonner@wu.ac.at
+Kevin Kurt
+IQAM Invest,
+Wollzeile 36-38 1010 Vienna, Austria
+kevin.kurt@iqam.com
+ABSTRACT
+The paper presents a Bayesian framework for the calibration of financial models using neural
+stochastic differential equations (neural SDEs). The method is based on the specification of a prior
+distribution on the neural network weights and an adequately chosen likelihood function. The
+resulting posterior distribution can be seen as a mixture of different classical neural SDE models
+yielding robust bounds on the implied volatility surface. Both, historical financial time series data and
+option price data are taken into consideration, which necessitates a methodology to learn the change
+of measure between the risk-neutral and the historical measure. The key ingredient for a robust
+numerical optimization of the neural networks is to apply a Langevin-type algorithm, commonly used
+in the Bayesian approaches to draw posterior samples.
+Keywords model calibration ·Bayesian ·neural SDE ·option pricing ·uncertainty quantification
+1 Introduction
+In financial institutions, the task of choosing one model from a pool of asset price models, given current market and
+historical data, is called calibration. Machine learning techniques started to offer new perspectives on this crucial
+task since they are computationally efficient and manage to capture empirically observed market characteristics. For
+instance, [ 17] or [ 11] and more recently [ 9] and [ 22] use so-called neural stochastic differential equations (neural SDEs)
+for solving the calibration problem in a setting where one is looking for a model which generates given (derivatives’)
+market prices. One key feature of neural SDEs is that by the universal approximation property of neural networks
+(see [ 15], [23], [31] ), all continuous characteristics of any SDE can be approximated on compacts. This ensures that
+the class is certainly rich enough to fit market data. [ 14] provide a global approximation result beyond compacts which
+can be useful in the analysis of approximation properties of neural SDEs, since the corresponding paths usually do not
+stay in compact sets almost surely.
+There are two drawbacks of the standard calibration approach using neural SDEs mentioned above: firstly, possible prior
+knowledge on appropriate distributions of the neural network weights is disregarded. Secondly, only point estimates
+of neural network weights are provided and thus there is no built-in uncertainty quantification on the resulting option
+prices. The latter is important to get robust price bounds for the asset pricing model at hand. In the following we
+attempt to tackle these aspects by proposing a Bayesian calibration algorithm for neural SDEs. Traditional calibration
+techniques for SDEs often aim to find a model that best replicates market data, in the sense of finding the ’true’ optimum
+∗Christa Cuchiero gratefully acknowledges financial support through grant Y 1235 of the START-program.arXiv:2409.06551v3 [q-fin.CP] 12 Sep 2024
+--- Page 2 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+with respect to a certain optimization criterion, which can be problematic given the inherently ill-posed nature of
+the calibration problem. Instead of seeking a singular solution, our Bayesian framework focuses on determining a
+distribution of plausible solutions.
+The core concept is to start with a prior distribution for the unknown parameters of the neural SDE model and then update
+this prior using the observed market data to derive a posterior distribution. We focus on constructing practical prior and
+likelihood functions and assessing the sensitivity of the Bayesian approach, with respect to the hyperparameter choices
+of the prior and likelihood functions. Our contribution also addresses the specific challenges of jointly calibrating to
+time-series data under the historical measure and derivatives’ price data under the risk neutral measure. This induces
+the need for measure changes, which we parameterize again by neural networks.
+One goal of this work is to serve as a proof of concept for applying Bayesian techniques to the highly flexible and
+dynamic framework of neural SDEs, highlighting the advantages of this approach. By fully integrating the power of
+neural networks with the stochastic nature of SDEs and addressing the complexities of including time series data as
+well as data on options, our approach opens new avenues for modeling in finance.
+1.1 Relation to the literature
+More broadly speaking and relating the current work to the literature, the application of machine learning techniques
+in mathematical finance has evolved rapidly over the last decades. Indeed, since the 1990s there is a big and steadily
+growing number of papers related to this topic, as outlined e.g., in [ 29]. We do not attempt to summarize all of them,
+but rather refer to some major milestones in view of model calibration and give a flavour of how to categorize earlier
+developments within this research area.
+If we focus on neural networks as a machine learning tool the first research category is utilising neural networks
+merely as a computational utility or as a method to store information. This is in order to avoid for instance slow and
+computationally heavy Monte Carlo sampling e.g. for pricing derivatives like VIX options. An example in this direction
+is the work by [ 3] or [ 24]. Another category builds on neural SDEs mentioned above, where the drift and diffusion
+function of classical SDEs are modeled by neural networks. Neural SDEs are a promising tool not only for (robust)
+pricing, hedging and calibration purposes (see [ 17]) but also for risk management or portfolio optimization. We also
+refer to [ 25], [8], [9], [10] and the references therein for learning features of neural SDEs and their employment for
+financial applications. In particular, in [ 9] an arbitrage-free neural SDE market model for European options is learnt by
+using discrete time series data as well as option price data.
+Let us mention in this context also so-called ’Sig-SDEs’ introduced by [ 1], where the volatility of the asset price process
+is modeled by means of a linear function of the (extended) signature of the driving Brownian motion. Signature here
+refers to the sequence of iterated Stratonovich integrals of the given Brownian motion. For other papers in the realm of
+calibration with signature methods we refer to [ 12,13], where the extended signature of some primary process, which
+does not have to be the (marked-inferred) Brownian motion, is used. The essence is the linearity of the model, which
+allows for fast and accurate calibrations results, using both time-series and implied volatility surface data, of the S&P
+500 as well as the VIX index.
+Other approaches, also based on machine learning tools, model directly the volatility surface without a dynamical
+arbitrage-free model, see e.g., [ 7] and the references therein. This article presents a deep learning method to produce
+the whole surface of local volatilities, enforcing no-arbitrage rules by applying Dupire’s formula to impose bounds on
+the local volatility related to the option prices.
+As far as Bayesian modeling in mathematical finance is concerned, one key reference for the current work is [ 21]. The
+paper introduces a Bayesian framework to calibrate local volatility models under the risk neutral measure based on the
+market’s derivatives prices. This leads to a posterior distribution of the model parameters. Another Bayesian approach
+is adopted in the paper ’Estimate nothing’ by [ 16]. There a mixture of different classical models is considered and a
+posterior distribution of the weights of the different models is obtained. To this end, also historical financial time series
+data is taken into consideration. More recent work employing Bayesian methods in the area of mathematical finance has
+been done by [ 32], where a local volatility model is equipped with a Gaussian process prior. This is done by defining a
+prior distribution over local volatility functions through a positive transformation of a Gaussian process with zero mean
+function and squared exponential covariance function, ensuring a smooth and positive volatility surface. Additionally, a
+hyperprior is placed on the parameters of the covariance function. [ 6] exploit Sequential Monte Carlo methods with a
+tempered likelihood to estimate option pricing models, allowing for two stochastic volatility factors, co-jumps between
+price and volatility as well as a stochastic jump intensity. The latent states in the Sequential Monte Carlo scheme are
+marginalized using risk-neutral cumulants which are given in closed form.
+2
+--- Page 3 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+As outlined in 1 the goal of the current paper is to unite the efforts described above and provide a Bayesian calibration
+framework based on neural SDEs. The paper is organized as follows: In Section 2 the model is introduced, in Section
+3 we propose a change of measure for neural SDEs, section 4 recalls a variance reduction technique, that is an
+essential ingredient for the proposed algorithm, Section 5 and 6 are the core of the paper, as they specify the Bayesian
+methodology to calibrate the neural SDE model under the historical and risk neutral measure, Section 7 provides
+a sensitivity analysis with respect to hyperparameter values, followed by an empirical study in Section 8, possible
+technical modifications in Section 9 and a conclusion inside 10.
+2 Stochastic volatility models as neural SDEs
+Similarly as in [ 17], fix T > 0and assume a constant interest rate r∈R. Furthermore consider a parameter space
+Θ = ΘbV×Θσ×ΘσV⊂Rpand functions bV: [0, T]×R×ΘbV→R,σ: [0, T]×R2×Θσ→Rand
+σV: [0, T]×R×ΘσV→R. Let (W1
+t)t∈[0,T]be a standard Brownian motion supported on (Ω,F,(Ft)t∈[0,T],Q).
+Consider the parametric SDE
+dSθ
+t=rSθ
+tdt+σ(t, Sθ
+t, Vθ
+t, θ)Sθ
+tdW1
+t, (1)
+dVθ
+t=bV(t, Vθ
+t, θ)dt+σV(t, Vθ
+t, θ)dW2
+t, (2)
+where dW2
+t=ρW1
+t+p
+1−ρ2Zt, with Ztbeing a Brownian motion independent from W1
+t,ρ∈[−1,1]being
+constant parameter and where (Vθ
+t)t≥0controls the spot variance process in our stochastic volatility model. Note that
+the model is free of arbitrage by construction, since (e−rtSθ
+t)t∈[0,T]is a local martingale. From now on we will refer
+to the risk-neutral measure, corresponding to the neural network parameters θ, asQ(θ). Furthermore define for all
+t∈[0, T]andθ∈Rp, the functions bandσxby
+b(t,(s, v), θ) := ( rs, bV(t, v, θ ))∈R2andσx(t,(s, v), θ) := ( sσ(t, s, v, θ ), σV(t, v, θ ))∈R2,
+where the first component of these functions refers to the Sθ-part and the second to the Vθ-part.
+In the case where (σ, bV, σV)are defined to be neural networks we call (1),(2)a system of neural SDEs. In the sequel
+we use SθandVθwhenever we refer to the model quantities and SandVwhenever we refer to quantities based on
+empirical data.
+By the universal approximation property of neural networks discussed in the introduction, all continuous characteristics
+of the SDE system (1)-(2)can be approximated on compacts. We also recall that the main advantage of neural SDEs is
+that they allow to combine the appealing flexibility of neural networks, in particular in view of optimization techniques
+via stochastic gradient descent methods, with well-known theory from mathematical finance based on continuous
+semimartingales. In view of model calibration, one main goal of this paper is to present a robust methodology to learn
+the parameters of the neural networks (σ, bV, σV)from market data. To this end we take both, derivatives’ prices and
+time series data into account.
+3 Change of measure for neural SDEs
+The calibration of neural SDEs can in principle be extended to the real world measure by considering an additional
+parametric function ζ: [0, T]×R2×Rp→R2that could be another neural network and by extending the parameter
+space to Θ = Θb×Θσ×Θζ⊂Rp2. LetYt= log Stand define the historical measure P(θ)via the Radon-Nikodym
+derivative
+dP(θ)
+dQ(θ):= expZT
+0
+ζ1(t, Yθ
+t, Vθ
+t, θ)
+ζ2(t, Yθ
+t, Vθ
+t, θ)⊤σ(t, Sθ
+t, Vθ
+t, θ) 0
+ρσV(t, Vθ
+t, θ)p
+1−ρ2σV(t, Sθ
+t, Vθ
+t, θ)
+dW1
+t
+dW2
+t
+. (3)
+The drift parts under this measure are now defined via
+bY,P(t, Yθ
+t, Vθ
+t, θ):=r−1
+2σ(t,exp(Yθ
+t), Vθ
+t, θ)2+ (σ(t,exp(Yθ
+t), Vθ
+t, θ))2ζ1(t, Yθ
+t, Vθ
+t, θ) (4)
++ρσ(t,exp(Yθ
+t), Vθ
+t, θ)σV(t, Vθ
+t, θ)ζ2(t, Yθ
+t, Vθ
+t, θ), (5)
+bV,P(t, Yθ
+t, Vθ
+t, θ):=bV(t, Vθ
+t, θ) +ρσ(t,exp(Yθ
+t), Vθ
+t, θ)σV(t, Vθ
+t, θ)ζ1(t, Yθ
+t, Vθ
+t, θ) (6)
++ (σV(t, Vθ
+t, θ))2ζ2(t, Yθ
+t, Vθ
+t, θ), (7)
+2For notational convenience we still denote the dimension of the parameter space by p
+3
+--- Page 4 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+where ζplays the role of the market price of risk. Assuming that ζis such that Novikov’s condition is satisfied,
+Girsanov’s theorem yields a Brownian motion (WP(θ)
+t)t∈[0,T]such that
+WP(θ)
+t=Wt−Zt
+0ζ1(s, Yθ
+s, Vθ
+s, θ)σ(s, Sθ
+s, Vθ
+s, θ) +ζ2(s, Yθ
+s, Vθ
+s, θ)ρσV(s, Sθ
+s, Vθ
+s, θ)
+ζ2(s, Yθ
+s, Vθ
+s, θ)p
+1−ρ2σV(s, Sθ
+s, Vθ
+s, θ)
+ds,
+where W= (W1, W2)and
+dYθ
+t=bY,P(t, Yθ
+t, Vθ
+t, θ)dt+σ(t,exp(Yθ
+t), Vθ
+t, θ)dWP(θ),1
+t , (8)
+dVθ
+t=bV,P(t, Vθ
+t, θ)dt+σV(t, Vθ
+t, θ)(ρdWP(θ),1
+t +p
+1−ρ2dWP(θ),2
+t ). (9)
+This neural SDE under the historical measure P(θ)can now be used to learn the market price of risk using market data
+such as a time series of asset prices.
+Note that the proposal of [ 17] to calibrate under the historical measure as well as under the risk neutral one is actually
+implemented and transferred into a Bayesian framework.
+4 Variance reduction for Monte Carlo pricing via hedging strategies
+As outlined, e.g. in [ 11] and [ 17] variance reduction in the computation of the Monte Carlo price of an option can be
+achieved using an approximate hedging portfolio with a large correlation between the option payoff and the hedge.
+In our setting this variance reduction will be achieved using hedging strategies which are parameterized via neural
+networks. More specifically, consider ptraded hedging instruments (Zt)t∈[0,T](including in particular the traded assets
+Sθ) which are square integrable martingales under the risk neutral measure Q(θ)and take values in Rp. Assume that the
+payoff of the option is a function of the terminal values of Z, i.e.C=g(ZT). Given a Markovian model the hedging
+strategy can now be specified by means of a function
+h:R+×Rp→Rp, ht=h(t, z),
+where hwill be parameterized as a neural network. Now the optimal hedge determined via some convex loss function
+l:R→R+for the claim Cwith corresponding market price Cmktcan be computed by
+inf
+ξE[l(−C+Cmkt+ (h(·, Z·, ξ)·Z·)T)],
+where ξstands for the weights of the neural network hand(h·Z)Tdenotes the stochastic integral with respect to Z.
+Modifying the calibration objective via the above explained variance reduction by means of hedging strategies allows a
+substantial reduction in the number of Monte Carlo samples.
+5 Robust option calibration
+To obtain a posterior distribution over derivatives prices and in turn price bounds for derivatives, first a likelihood
+function will be specified. Together with a prior distribution p(θ)on the weights θof the neural networks (σ, bV, σV)
+appearing in the neural SDE system (1),(2), the desired posterior distribution will then be obtained explicitly. The
+calibration to derivatives will be with respect to call options only. However, the loss function specified in the following
+subchapter can be easily modified to allow for different terminal value payoffs.
+5.1 Option calibration
+The likelihood is defined via assumptions on the deviations of the options’ market prices to the ’true’ model prices
+as specified below. The observed market prices are specified as mid prices of bid and ask prices, i.e. C(i)
+mkt=
+1
+2 
+C(i)bid
+mkt+C(i)ask
+mkt
+,i= 1, ..., J . The options are written on the underlying Sand their payoffs are denoted by
+{Φi}J
+i=1, where Jdenotes the number of options considered. From now on we assume for notational simplicity that
+r= 0, unless specified otherwise. We write C(i)
+mod(θ) =EQ(θ)[Φi]for the corresponding model prices with model
+parameters θ. Similarly as in [ 21], letδi=104
+S0|C(i)ask
+mkt−C(i)bid
+mkt|denote the basis point bid-ask spread of the ith
+option at time zero. Then the basis point calibration error for the ithoption is supposed to be normally distributed as
+104
+S0(C(i)
+mod(θ)−C(i)
+mkt)∼ N(0, δ2
+i). (10)
+4
+--- Page 5 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+The natural interpretation of (10) is that in theory there exists a ’true’ model yielding an arbitrage free market and
+that the market price of the option equals its model price plus some normally distributed random noise. In order to fit
+the implied volatility surface the basis point error function for calibration will be modified using a weighting scheme
+(compare [4]). Indeed, define δ2=1PJ
+i=11
+δ2
+iandwi=δ2
+δ2
+iso that
+104
+S0(√w1(C(1)
+mod(θ)−C(1)
+mkt), . . . ,√wJ(C(J)
+mod(θ)−C(J)
+mkt))∼ N(0, δ2IJ), (11)
+where IJdenotes the J×Jidentity matrix. Note thatPJ
+i=1wi= 1, by definition. The corresponding likelihood is
+then proportional to exp(−1
+2δ2G(θ))where G(θ)is defined as
+G(θ) =108
+S2
+0JX
+i=1wi|C(i)
+mod(θ)−C(i)
+mkt|2. (12)
+With this specify the Bayesian likelihood function as
+-
+l(Cmkt|θ) =l((C1
+mkt, . . . , CJ
+mkt)|θ)∝exp(−1
+2δ2G(θ)). (13)
+The prior distribution for the neural network weights θplays a crucial role in the Bayesian modeling framework. In
+many applications, historical data or expert knowledge may be used for this prior decision. In this work, the prior
+choice is found through theoretical considerations about neural network initialization. More precisely, it corresponds to
+the so called Glorot normal initialization, introduced in [19]. In this work the authors study the forward pass equation
+and back-propagated gradients, inspired by the paper [ 2], who established that the variance of the back-propagated
+gradients diminishes as one moves from the output layer to the input layer, even if no training has occurred yet. [ 19]
+consider a simplified setting to propose a heuristic for the initialization of neural network parameters, maintaining a
+high information flow across layers. The authors suggest to randomly initialize neural network weights drawing from a
+normal distribution centered at zero with standard deviation
+σprior =g·r
+2
+fan in +fan out, (14)
+where gdenotes an optional scaling factor, fan in stands for the number of neurons in the predecessor layer and fan out
+stands for the number of neurons in the successor layer, so that the initialization scheme depends on the width of layers.
+Thus, the prior distribution is specified as
+p(θ)∼ N(0, σ2
+priorIJ). (15)
+Since in our architecture, the hidden layers are of width 100, the value of σprior is approximately 0.15 for most neural
+network weights, as the scaling factor gis chosen to be 1.5. We will study in a later section how the prior variance
+affects the convergence of the suggested algorithm.
+The posterior distribution can now be derived explicitly using the prior and likelihood formulated above as
+f(θ|Cmkt) =l(Cmkt|θ)·p(θ)∝exp(−1
+2δ2G(θ))·exp(−||θ||2
+2σ2
+prior). (16)
+We would like to emphasize that the inclusion of the prior term corresponds to Tikhonov regularization with parameter
+δ2/σ2
+prior as is explained in [20] for instance.
+5.2 Training the model
+Note that in practice the true model price for the call option iwith maturity Ti, strike Kiand payoff Φi= (Sθ
+Ti−Ki)+,
+given by C(i)
+mod(θ) =EQ(θ)[Φi], needs to be approximated. The choice of the standard Monte Carlo estimator means
+that after simulating Mprice trajectories (ωm)M
+m=1a Monte Carlo approximation to C(i)
+mod(θ)is given by computing
+C(i)
+mod(θ) =1
+MPM
+m=1(Sθ
+Ti(ωm)−Ki)+, under the risk-neutral measure. This then leads to an approximation of G(θ)
+as
+G(θ) =108
+S2
+0JX
+i=1wi|C(i)
+mod(θ)−C(i)
+mkt|2≈108
+S2
+0JX
+i=1wi|(1
+MMX
+m=1(Sθ
+Ti(ωm)−Ki)+)−C(i)
+mkt|2.
+5
+--- Page 6 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Of course this approximation entails a Monte Carlo error of order1√
+M, meaning that the number of simulated trajectories
+Mneeds to be quite large in order to find a good approximation of the true model prices. The hedging control variates
+introduced above provide a remedy for this issue and reduce the number of sample paths that are needed for a good
+approximation. For this reason the final approximation used for G(θ)is of the form
+G(θ)≈108
+S2
+0JX
+i=1wi|(1
+MMX
+m=1(Sθ
+Ti(ωm)−Ki)+)−C(i)
+mkt−
+h(·, Zθ
+·(ωm), ξ)·Zθ
+·(ωm)
+Ti|2. (17)
+The model parameters will be estimated using a gradient descent scheme. More precisely, during the training we
+perform an updating step ∆θj, with step size ϵjof the neural network weights in iteration jof the training algorithm
+utilizing the Langevin diffusion (see for example [28]) via
+∆θj:=ϵj
+2
+∇logp(θj) +∇logl(Cmkt|θj)
++ηj, ηj∼ N(0, ϵj) (18)
+where logl(Cmkt|θ)is given by
+logl(Cmkt|θ) =−J
+2log(2π)−J
+2log(δ2)−1
+2δ2G(θ). (19)
+The updated neural network weights are now taken as an input for the next iteration to compute the model prices, given
+θj. This procedure results in a sequence of Monte Carlo option prices, given the neural network weights. After an
+adequate burn-in phase, this chain will stabilize around the posterior distribution of option prices. The samples drawn
+after the burn-in phase then yield approximate realizations of the desired posterior distribution, which can then be
+utilized to obtain bounds on derivatives prices. The detailed algorithm, where the hedging instrument Zis chosen to be
+the traded asset Sθto compute (17), is explained below:
+-
+Algorithm 1
+Input: {t0, t1, ..., t Nsteps}time grid for numerical scheme, (Φi)J
+i=1option payoffs, market option prices Cmkt(Φi), i=
+1, ..., J , weights wi, i= 1, ..., J
+initialize neural network parameters θviap(θ)and choose step size ϵ
+forepoch: 1: Nepochs do
+Generate Mpaths (Sθ
+tn(ωm), Vθ
+tn(ωm))Nsteps
+n=0, m= 1, ..., M using e.g. an Euler scheme.
+During one epoch: Freeze ξ, use Langevin Dynamics to update θ, via
+∆θ=ϵ
+2h
+∇
+−J
+2log(2π)−J
+2log(δ2)−1
+2δ2˜G(θ)
++∇logp(θ)i
++η,
+where ˜G(θ) =108
+S2
+0PJ
+i=1wi|˜C(i)
+mod(θ)−C(i)
+mkt|2,
+˜C(i)
+mod(θ) =1
+MPM
+m=1[(Sθ
+Ti(ωm)−Ki)+−PTi
+n=0h(tn, Sθ
+tn(ωm), ξ)(Sθ
+tn+1(ωm)−Sθ
+tn(ωm))]withhbeing
+the specific control variate explained in the previous Section, η∼ N(0, ϵ).
+During one epoch: Freeze θ, use ADAM ( [26]) to update ξ, by optimizing the sample variance
+ξ∗∈arg min
+ξJX
+i=1V arQ(θ)[˜C(i)
+mod(θ)],
+where V arQ(θ)[·]denotes the sample variance under Q(θ).
+end for
+-
+return θ, ξfor all prices (Φi)J
+i=1.
+The output of this optimization procedure yields a posterior distribution of the parameters θ. This posterior
+can in turn be used to obtain robust price bounds for options and the corresponding implied volatility surface. In
+the case where the set of derivatives can be grouped by maturity, as in the case of call and put options, one can
+split the networks into one network per maturity. One can then perform a special kind of stepwise learning. More
+6
+--- Page 7 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+precisely let θ= (θ1, ..., θ Nmaturity ), where Nmaturity is the number of maturities and define bV(t, Vθ
+t, θ) :=PNmaturity
+i=1 1t∈[Ti−1,Ti)(t)bV,i(t, Vθ
+t, θi),σ(t, Sθ
+t, Vθ
+t, θ) :=PNmaturity
+i=1 1t∈[Ti−1,Ti)(t)σi(t, Sθ
+t, Vθ
+t, θi)and
+σV(t, Vθ
+t, θ) :=PNmaturity
+i=1 1t∈[Ti−1,Ti)(t)σV,i(t, Vθ
+t, θi), where each bV,i,σiandσV,iis a feedforward neural
+network. Note that the corresponding neural network parameters (θi)Nmaturity
+i=1 can be initialized using different
+standard deviations σprior,i for each maturity.
+Algorithm 2
+fork: 1 :Nmaturity do
+Calibrate the neural SDE to market prices observed for maturity kvia the Algorithm 1
+Freeze the neural network parameters corresponding to maturity k
+end for
+For the first simulation study, we calibrate with respect to the same artifical data generated by the Heston model as
+in [17]. The neural SDE is discretized via the Euler Maruyama scheme with Nsteps = 8×12uniform time steps
+forT= 1, which corresponds to 8 steps for every month. All simulation studies performed in this paper have been
+implemented using PyTorch introduced in [ 27]. The model (1) (2) is calibrated using the Bayesian algorithm explained
+above, with the goal to match vanilla call prices with bi-monthly maturities for 21 strike prices evenly distributed
+between 0.8 and 1.2, which are generated by the Heston model, where the initial price of the underlying is S0= 1.
+After the training procedure, it is possible to use the resulting distribution on neural network weights in order to obtain
+bounds on the implied volatility smile, as illustrated in Figure 1.
+6 Including time series characteristics
+In the following, we suggest to extend the above calibration to option price data additionally by including time series
+data of the logarithmic asset prices (Yt)t≥0. The result of this combined approach is a model that is calibrated to
+time-series data while yielding a distribution on the implied volatility surface with robust price bounds for option prices.
+We would like to emphasize that we assume both, (Yt)t≥0and(Vt)t≥0to be observable. In any empirical application,
+(Vt)t≥0would have to be estimated from market data. Recall that the dynamics of the neural SDE under the real world
+measure P(θ)are given by
+dYθ
+t=bY,P(t, Yθ
+t, Vθ
+t, θ)dt+σ(t,exp(Yθ
+t), Vθ
+t, θ)dWP(θ),1
+t , (20)
+dVθ
+t=bV,P(t, Vθ
+t, θ)dt+σV(t, Vθ
+t, θ)(ρdWP(θ),1
+t +p
+1−ρdWP(θ),2
+t ). (21)
+Similarly as in [ 33] note that conditional on the neural network parameters θ,YtnandVtn, for the timegrid
+{t0, t1, ..., t Nsteps},Ytn+1−YtnandVtn+1−Vtnfollow a bivariate normal distribution
+
+Ytn+1−Ytn
+Vtn+1−Vtn
+|θ, Ytn, Vtn∼N
+bY,P∆tn
+bV,P∆tn
+,∆tn
+σ2ρσσV
+ρσσV(σV)2
+,
+where ∆tn=tn+1−tnstands for one time step.
+Based on that the likelihood of the log price Y= (Yt)t≥0and the volatility V= (Vt)t≥0given the neural network
+parameters is given by
+h(Y, V|θ) =Nsteps−1Y
+n=01
+2πp
+1−ρ2×exp{−1
+2(1−ρ2)((ψtn+1)2−2ρψV
+tn+1ψtn+1+ (ψV
+tn+1)2)},
+where ψtn+1= (Ytn+1−Ytn−bY,P∆tn)/(σ√∆tn)andψV
+tn+1= (Vtn+1−Vtn−bV,P∆tn)/(σV√∆tn). This approach
+is linked to so called Approximated-Likelihood-Methods (see for example in [ 30] chapter 11.4). As the transition
+densities typically used in the computation of the likelihood are not tractable, they have to be approximated. One
+approach is to approximate the SDE with a continuous- or discrete-time system whose transition density we can evaluate.
+For example, recalling that one step in the Euler-Maruyama method has a Gaussian transition density this leads to an
+approximation as given above, from which the corresponding log-likelihood can be derived easily.
+The joint posterior distribution of neural network parameters given time series data and option prices observed on the
+market is given as
+g(θ|Y, C mkt)∝l(Cmkt|θ)·h(Y, V|θ)·p(θ). (22)
+7
+--- Page 8 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Strike0.880.920.961.1.041.081.121.161.2Maturity32/96
+48/96
+64/96
+80/96
+1.Implied volatility
+0.150.200.250.300.35Call implied volatility surface Heston model
+Figure 1: Robust calibration bounds on the implied volatility surface.
+This posterior distribution now serves as the new loss function in Algorithm 1.1.
+Algorithm 1.1
+Input: {t0, t1, ..., t Nsteps}time grid for numerical scheme, observations of market data S= (Stn)Nsteps
+tn=0 andV=
+(Vtn)Nsteps
+nt=0,(Φi)J
+i=1option payoffs, market option prices Cmkt(Φi), i= 1, ..., J , weights wi, i= 1, ..., J
+initialize neural network parameters θviap(θ)and choose step size ϵ
+forepoch: 1: Nepochs do
+Generate Mpaths (Sθ
+tn(ωm), Vθ
+tn(ωm))Nsteps
+n=0, m= 1, ..., M using e.g. Euler scheme under Q(θ).
+Compute log-price process (Yθ
+tn)Nsteps
+n=0 under P(θ)from (Xθ
+tn)Nsteps
+n=0 , using the neural network ζfor the
+market price of risk.
+During one epoch: Freeze ξ, sample index kfrom integers {1,2, ..., M }for the time-series dynamics, use
+Langevin Dynamics to update θvia
+∆θ=ϵ
+2h
+∇
+−J
+2log(2π)−J
+2log(δ2)−1
+2δ2˜G(θ)
++∇NstepsX
+n=0
+−logp
+1−ρ2−1
+2(1−ρ2) 
+(ψ∆tn)2−2ρψV
+∆tnψ∆tn+ (ψV
+∆tn)2
++∇logp(θ)i
++η
+8
+--- Page 9 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+where ˜G(θ)is as defined above, η∼ N(0, ϵ)and where
+ψ∆tn=
+Ytn+1−Ytn−bY,P(tn, Yθ
+tn, Vθ
+tn, θ)(ωk)∆tn
+/σ(tn,exp(Yθ
+tn), Vθ
+tn, θ)(ωk)p
+∆tn
+and
+ψV
+∆tn=
+Vtn+1−Vtn−bY,P(tn, Yθ
+tn, Vθ
+tn, θ)(ωk)∆tn
+/σV(tn,exp(Yθ
+tn), Vθ
+tn, θ)(ωk)p
+∆tn
+During one epoch: Freeze θ, use ADAM ( [26]) to update ξ, by optimizing the sample variance
+ξ∗∈arg min
+ξJX
+i=1V arQ(θ)[Φi−Nsteps−1X
+n=0h(tn, Sθ
+tn, ξ)(Sθ
+tn+1−Sθ
+tn)]
+-
+end for
+return θ, ξfor all prices (Φi)J
+i=1.
+As a first step the approach suggested above will be tested using the [ 5] model. This model is of course not well suited
+to match the empirically observed implied volatility surface. The reason why we consider this model is that here the
+market price of risk is known in closed form and thus it can be verified if the suggested method is able to learn the
+theoretically given change of measure. Adapting the standard notation of the Black-Scholes model, the neural SDE for
+the log price process Yunder the historical measure then takes the form
+dYθ
+t=µ(t, Yθ
+t, θ)dt−1
+2σ(t,exp(Yθ
+t), θ)2dt+σ(t,exp(Yθ
+t), θ)dWt,
+where µandσare neural networks. Note that in the notation of (8), bY,P(t, Yθ
+t, θ)is given by
+bY,P(t, Yθ
+t, θ) =µ(t, Yθ
+t, θ)−1
+2σ(t,exp(Yθ
+t), θ)2dt.
+As mentioned above, in the Black-Scholes model the market price of risk is known in closed form and so in the notation
+of equation (5)and(7)we specify ζ1as(µ−r)/σ2andζ2as 0. Let us remark that from a learning perspective it is
+equivalent to parameterize ζ1as a neural network and to specify bY,P(orµ) according to (5)or the other way round as
+we do here.
+This neural SDE is initialized via the Glorot normal prior explained above and Mtrajectories of it are simulated to
+match the law of one given trajectory of the log-price process. In order to also match the Black-Scholes option prices
+the Monte Carlo estimator for Cmod(θ), the price for an option with one specific maturity and strike K, is computed
+using (17).
+Results for the posterior distribution that is obtained based on this procedure are presented below for a trading year
+consisting again of 96 time steps. The input data for the historical measure is one trajectory from the logarithm of a
+geometric Brownian motion with drift 0.05and diffusion 0.3.
+dYt= (0.05−0.5·0.32)dt+ 0.3dWt, Y0= 0
+simulated via the Euler-Maruyama scheme. The input for the Q-measure are call option prices obtained from the Black
+Scholes formula for risk-free rate r= 0.025, 21 strikes from 0.8 to 1.2 and maturities 16, 32, 48, 64, 80 and 96.
+-
+It is interesting to investigate the paths and the corresponding quantiles that are generated by the calibrated neural SDE
+in comparison to paths generated from the original Black-Scholes model, see Table 1.
+-
+Additionally one can also compare the real Black-Scholes prices calculated via the Black-Scholes formula for a given
+maturity, strike, risk-free rate and volatility and the posterior model prices that are obtained from the neural SDE by the
+above explained procedure in Table 2. Note that the dashed line represents the true Black-Scholes prices.
+The trace plots reveal that the algorithm converged around epoch 13. This means that after this epoch we are dealing
+with approximate draws from the posterior distribution, which is why the plots in the second row of the above panel use
+model prices from the 13th epoch onwards. Recall that the model was trained to strikes between 0.08and1.2. It is very
+interesting to observe that at those areas where there is no market data (for example for strikes between 1 and 1.02
+for maturity 64) the posterior draws are spread out in a wider range, reflecting the larger uncertainty that is present in
+these regions. The implied volatility surface in the Black-Scholes model is just a flat line with value equal to σ, by the
+definition of implied volatility. The graphs in Table 3 reveal that the trained neural SDE comes rather close to this line.
+9
+--- Page 10 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 1: Marginal distributions and qq-plots resulting from a calibration to simulated time series data.
+0 200 400 600 800 1000
+epochs0.000.050.100.150.20model pricesTrace plots for strikes 0.8 to 1.2 
+Maturity 16
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.000.050.100.150.20call pricesPosterior draws after burn-in of 13 
+Maturity 16
+0 200 400 600 800 1000
+epochs0.000.050.100.150.200.25model pricesTrace plots for strikes 0.8 to 1.2 
+Maturity 32
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.000.050.100.150.20call pricesPosterior draws after burn-in of 13 
+Maturity 32
+0 200 400 600 800 1000
+epochs0.000.050.100.150.200.25model pricesTrace plots for strikes 0.8 to 1.2 
+Maturity 48
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.050.100.150.20call pricesPosterior draws after burn-in of 13 
+Maturity 48
+0 200 400 600 800 1000
+epochs0.050.100.150.200.250.30model pricesTrace plots for strikes 0.8 to 1.2 
+Maturity 64
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.050.100.150.200.25call pricesPosterior draws after burn-in of 13 
+Maturity 64
+0 200 400 600 800 1000
+epochs0.050.100.150.200.250.30model pricesTrace plots for strikes 0.8 to 1.2 
+Maturity 80
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.050.100.150.200.25call pricesPosterior draws after burn-in of 13 
+Maturity 80
+0 200 400 600 800 1000
+epochs0.050.100.150.200.250.300.35model pricesTrace plots for strikes 0.8 to 1.2 
+Maturity 96
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.050.100.150.200.25call pricesPosterior draws after burn-in of 13 
+Maturity 96
+Table 2: Trace plots and call option prices resulting from a calibration to simulated data from a Black-Scholes model.
+7 Sensitivity analysis using the Black-Scholes model
+7.1 Robustness with respect to the prior variance
+In this section the sensitivity of the suggested algorithm with respect to the parameter σprior is studied. Recall that the
+prior distribution is specified as
+p(θ)∼ N(0, σ2
+prior). (23)
+10
+--- Page 11 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+epochs0.00.20.40.60.81.0model pricesImplied Volatility Maturity 16
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+epochs0.00.20.40.60.81.0model pricesImplied Volatility Maturity 32
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+epochs0.00.20.40.60.81.0model pricesImplied Volatility Maturity 48
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+epochs0.00.20.40.60.81.0model pricesImplied Volatility Maturity 64
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+epochs0.00.20.40.60.81.0model pricesImplied Volatility Maturity 80
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+epochs0.00.20.40.60.81.0model pricesImplied Volatility Maturity 96
+Table 3: Implied volatility surface resulting from a calibration to simulated data from a Black-Scholes model.
+In our architecture, the hidden layers are of width 100, which implies that the value of σprior is approximately 0.15
+for most neural network weights, as the scaling factor gused in the definition of (14) is chosen to be 1.5. We observe
+in Table 5 that the calibration to time series data is not highly sensitive with respect to σprior . The best fit however
+seems to be captured by σprior∈(0.1,0.15). The results of the last iteration of the algorithm are depicted in Table 6.
+The results suggest that also the calibration to option data is quite robust with respect to moderate changes in σprior .
+However, it is indicated that larger values of σprior yield an inferior fit to option prices. In the Table 7 we study the
+trace plots for each different product and varying σprior . It appears that the algorithm has converged to its stable regime
+by iteration 500 at latest in Table 7. Table 8 presents the posterior surface of implied volatility for each combination of
+σprior and maturity after a burn-in based on the trace plots above. It can be observed that the model adequately captures
+the true implied volatility surface for each small change of σprior . Numerical experiments have shown that smaller
+values of σprior yield more stable results. This seems to be natural as smaller values of σprior lead to more shrinkage,
+meaning that the set of neural network parameters is sparse in the sense that they are close to zero.
+7.2 Robustness with respect to the noise level
+In this section the robustness of the algorithm with respect to the parameter δis analyzed. Recall that the definition
+of this parameter is linked to the bid-ask spread of options. Nevertheless we would like to provide an intuition of
+how sensitive the proposed method is with respect to the value of this parameter as the bid-ask spread may vary due
+to different market conditions, liquidity, trading volume, and the specific broker through which the trade is executed.
+Depicted in Table 9 and 10 are results of the last iteration of the algorithm. The results reveal that the calibration to
+option data, as well as time series data, is not very sensitive with respect to changes in δ. Table 11 shows the trace plots
+for each different maturity and varying δ. The mixing seems to be decent and one can see that the algorithm stabilizes
+after iteration 500 at latest. We present the posterior surface of implied volatility for each combination of δand maturity
+after a burn-in based on the trace plots above in Table 12. The plots reveal that the model is adequately calibrated to the
+true implied volatility surface for each choice of δ.
+8 Results for empirical data
+In this final Section the model consisting of equations (1)and(2)is calibrated to real call options considering empirical
+S&P 500 implied volatility data with 10 strikes and 4 maturities to determine the prices of the corresponding European
+call options. The spot price of the underlying at time 0 is S0= 590 ,δ= 4.5,σprior = 4, the interest rate is r= 0.060
+and dividend rate d= 0.026. The prices are given in Appendix 4. The reason why we take this data set as an example is
+that even tough the data are from 1990s, they allow for a direct comparison with the results given in [ 21], as we choose
+exactly the same data and hyperparameters. This is also the reason why the σprior is chosen relatively high compared
+to the values in 7.2: the Tikhonov regularization parameter δ2/σ2
+prior depends on the scale of the input data and as the
+data in [ 21] is not standardized we also refrain from it in this study. The plots in Table 4 reveal that in contrast to the
+11
+--- Page 12 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+bounds on the implied volatility surface presented in [ 21], where the spread of implied volatilities is, according to the
+authors, enormous, we obtain much tighter bounds given by the minimum and maximum implied volatility for each
+strike and maturity that are attained after algorithmic convergence.
+The code for this Section is available in form of a github repository at github.com/evaflonner/Calibration-of-Neural-
+Table 4: Robust bounds on implied volatility surface for calibration with respect to real option data.
+Strike0.90.9511.051.10Maturity.425
+.695
+.94Implied volatility
+0.050.100.150.200.250.30Call implied volatility surface real data
+SDEs-using-Bayesian-Methods. We do not attempt to jointly calibrate to real option data and the historical price
+trajectory of the S&P 500, to ensure comparability with the results presented in [ 21]. The plots in Table 4 suggest that
+the neural SDE has been calibrated adequately to the historical call prices.
+9 Possible technical modifications
+It might be possible to consider a Metropolis-Hastings element in the Algorithm 1.1 for the joint calibration under the
+historical measure and the risk neutral measure, so that an update of the neural network parameters θis only considered
+to be a proposal, that is rejected with a certain probability. This is known as the Metropolis-adjusted Langevin algorithm
+and in the Bayesian literature this algorithm typically shows better convergence properties than the unadjusted Langevin
+algorithm. Similarly as in [ 33], on may also chose a more robust distribution family for the error/noise distribution
+which then defines the likelihood function such as the Student-t distribution.
+12
+--- Page 13 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+10 Conclusion
+In conclusion, this paper has presented a comprehensive Bayesian framework for the calibration of neural SDEs,
+addressing the inherent challenges of joint calibration with respect to option data and financial time series data,
+necessitating a measure change. By shifting the focus from finding a singular best-fit solution to determining a
+distribution of plausible solutions, our approach offers a robust framework for model calibration.
+The integration of Bayesian methods allows for the incorporation of prior information and the systematic update of this
+information using observed market data, resulting in a posterior distribution that provides a richer concept of parameter
+uncertainty. This approach not only enhances the applicability of neural SDE models but also aligns with the broader
+goals of capturing model risk and uncertainty. Additionally, by incorporating considerations for changes of measure,
+our framework further extends the applicability and utility of neural SDE models in the financial domain.
+Future work can build on this foundation by exploring alternative prior distributions, optimizing computational strategies,
+and considering a time-series of option data, rather than one single cross-section.
+A Details on neural network architecture
+This section is dedicated to the simulation study aiming at matching log price trajectories as well as call option prices in
+the Black-Scholes model. The neural network architecture for all other simulation studies is similar to the one described
+here. The trainable elements for the neural SDE in the Black-Scholes case are µ(.)andσ(.). For each of µ(.)andσ(.)
+there is one neural network for each period that takes as an input the time step as well as the current value of the neural
+SDE. There are four hidden layers with 100 neurons for each of these neural networks. The activation function in the
+hidden layers is the leakyrelu and in the output layer it is the softplus activation function for σ(.), and the identity for
+µ(.). As mentioned above, each of these neural networks is initialized via the so called Glorot normal prior.
+B Supplementary plots
+This appendix collects the plots describes in Section 7
+13
+--- Page 14 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 5: Sensitivity of calibration to time series data, with respect to σprior .
+σprior = 0.1 σprior = 0.15
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+σprior = 0.2 σprior = 0.25
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+14
+--- Page 15 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 6: Sensitivity of calibrated call option prices, with respect to σprior .
+σprior = 0.1 σprior = 0.15
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+σprior = 0.2 σprior = 0.25
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+15
+--- Page 16 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 7: Trace plots for calibration results with varying σprior .
+σprior = 0.1
+0 200 400 600 800 10000.120.140.160.180.200.22Trace plots for maturity 16 and prior 0.1
+0 200 400 600 800 10000.140.160.180.200.220.24Trace plots for maturity 32 and prior 0.1
+0 200 400 600 800 10000.140.160.180.200.220.240.26Trace plots for maturity 48 and prior 0.1
+0 200 400 600 800 10000.160.180.200.220.240.260.28Trace plots for maturity 64 and prior 0.1
+0 200 400 600 800 10000.180.200.220.240.260.280.30Trace plots for maturity 80 and prior 0.1
+0 200 400 600 800 10000.180.200.220.240.260.280.30Trace plots for maturity 96 and prior 0.1
+σprior = 0.15
+0 200 400 600 800 10000.120.140.160.180.200.22Trace plots for maturity 16 and prior 0.15
+0 200 400 600 800 10000.120.140.160.180.200.220.24Trace plots for maturity 32 and prior 0.15
+0 200 400 600 800 10000.140.160.180.200.220.240.260.28Trace plots for maturity 48 and prior 0.15
+0 200 400 600 800 10000.160.180.200.220.240.260.280.30Trace plots for maturity 64 and prior 0.15
+0 200 400 600 800 10000.160.180.200.220.240.260.280.300.32Trace plots for maturity 80 and prior 0.15
+0 200 400 600 800 10000.1750.2000.2250.2500.2750.3000.325Trace plots for maturity 96 and prior 0.15
+σprior = 0.2
+0 200 400 600 800 10000.120.140.160.180.200.220.240.26Trace plots for maturity 16 and prior 0.2
+0 200 400 600 800 10000.1250.1500.1750.2000.2250.2500.2750.300Trace plots for maturity 32 and prior 0.2
+0 200 400 600 800 10000.150.200.250.300.35Trace plots for maturity 48 and prior 0.2
+0 200 400 600 800 10000.150.200.250.300.35Trace plots for maturity 64 and prior 0.2
+0 200 400 600 800 10000.150.200.250.300.350.40Trace plots for maturity 80 and prior 0.2
+0 200 400 600 800 10000.200.250.300.350.40Trace plots for maturity 96 and prior 0.2
+σprior = 0.25
+0 200 400 600 800 10000.100.120.140.160.180.200.220.240.26Trace plots for maturity 16 and prior 0.25
+0 200 400 600 800 10000.1250.1500.1750.2000.2250.2500.2750.300Trace plots for maturity 32 and prior 0.25
+0 200 400 600 800 10000.150.200.250.30Trace plots for maturity 48 and prior 0.25
+0 200 400 600 800 10000.150.200.250.300.35Trace plots for maturity 64 and prior 0.25
+0 200 400 600 800 10000.150.200.250.300.35Trace plots for maturity 80 and prior 0.25
+0 200 400 600 800 10000.150.200.250.300.350.40Trace plots for maturity 96 and prior 0.25
+Table 8: Sensitivity of calibrated implied volatilities, with respect to σprior .
+σprior = 0.1
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.1750.2000.2250.2500.2750.3000.3250.3500.375implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.270.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.33implied volatility
+σprior = 0.15
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.200.250.300.350.40implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.1750.2000.2250.2500.2750.3000.3250.350implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.200.220.240.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.280.300.320.34implied volatility
+σprior = 0.2
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.200.220.240.260.280.300.320.340.36implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.240.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.240.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.280.300.320.340.36implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.280.300.320.340.36implied volatility
+σprior = 0.25
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.150.200.250.300.350.40implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.150.200.250.300.350.40implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.150.200.250.300.350.40implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.200.250.300.350.40implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.200.250.300.350.40implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.2250.2500.2750.3000.3250.3500.3750.4000.425implied volatility
+16
+--- Page 17 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 9: Sensitivity of calibration to time series data, with respect to δ.
+δ= 1 δ= 5
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+δ= 10 δ= 38.44
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+0 20 40 60 80 1001.5
+1.0
+0.5
+0.00.51.01.5
+0.25 quantile EM paths
+0.5 quantile EM paths
+0.75 quantile EM paths
+0.25 quantile BNSDE paths
+0.5 quantile BNSDE paths
+0.75 quantile EM paths
+17
+--- Page 18 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 10: Sensitivity of calibrated call option prices, with respect to δ.
+δ= 1 δ= 5
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+δ= 10 δ= 38.44
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.00.000.050.100.150.200.25Model prices versus true BS prices (dashed line)
+18
+--- Page 19 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Table 11: Trace plots for calibration results with varying δ.
+δ= 1
+0 200 400 600 800 10000.120.140.160.180.20Trace plots for maturity 16 and delta 1
+0 200 400 600 800 10000.120.140.160.180.200.22Trace plots for maturity 32 and delta 1
+0 200 400 600 800 10000.140.160.180.200.220.24Trace plots for maturity 48 and delta 1
+0 200 400 600 800 10000.160.180.200.220.240.26Trace plots for maturity 64 and delta 1
+0 200 400 600 800 10000.180.200.220.240.26Trace plots for maturity 80 and delta 1
+0 200 400 600 800 10000.180.200.220.240.260.28Trace plots for maturity 96 and delta 1
+δ= 5
+0 200 400 600 800 10000.120.140.160.180.20Trace plots for maturity 16 and delta 5
+0 200 400 600 800 10000.120.140.160.180.200.22Trace plots for maturity 32 and delta 5
+0 200 400 600 800 10000.140.160.180.200.220.24Trace plots for maturity 48 and delta 5
+0 200 400 600 800 10000.160.180.200.220.24Trace plots for maturity 64 and delta 5
+0 200 400 600 800 10000.180.200.220.240.26Trace plots for maturity 80 and delta 5
+0 200 400 600 800 10000.180.200.220.240.26Trace plots for maturity 96 and delta 5
+δ= 10
+0 200 400 600 800 10000.120.140.160.180.200.220.24Trace plots for maturity 16 and delta 10
+0 200 400 600 800 10000.120.140.160.180.200.220.240.260.28Trace plots for maturity 32 and delta 10
+0 200 400 600 800 10000.1500.1750.2000.2250.2500.2750.300Trace plots for maturity 48 and delta 10
+0 200 400 600 800 10000.1500.1750.2000.2250.2500.2750.3000.3250.350Trace plots for maturity 64 and delta 10
+0 200 400 600 800 10000.200.250.300.35Trace plots for maturity 80 and delta 10
+0 200 400 600 800 10000.200.250.300.35Trace plots for maturity 96 and delta 10
+δ= 38.44
+0 200 400 600 800 10000.120.140.160.180.200.220.24Trace plots for maturity 16 and delta 38.44
+0 200 400 600 800 10000.120.140.160.180.200.220.240.26Trace plots for maturity 32 and delta 38.44
+0 200 400 600 800 10000.140.160.180.200.220.240.260.280.30Trace plots for maturity 48 and delta 38.44
+0 200 400 600 800 10000.1500.1750.2000.2250.2500.2750.3000.325Trace plots for maturity 64 and delta 38.44
+0 200 400 600 800 10000.1750.2000.2250.2500.2750.3000.3250.350Trace plots for maturity 80 and delta 38.44
+0 200 400 600 800 10000.200.250.300.35Trace plots for maturity 96 and delta 38.44
+Table 12: Sensitivity of calibrated implied volatilities, with respect to δ.
+δ= 1
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.1750.2000.2250.2500.2750.3000.3250.350implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.240.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.31implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.270.280.290.300.310.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.270.280.290.300.310.320.330.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.33implied volatility
+δ= 5
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.1750.2000.2250.2500.2750.3000.3250.3500.375implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.220.240.260.280.300.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.250.260.270.280.290.300.31implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.270.280.290.300.310.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.280.300.320.34implied volatility
+δ= 10
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.220.240.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.240.260.280.300.320.34implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.33implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.330.34implied volatility
+δ= 38.44
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.240.260.280.300.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.250.260.270.280.290.300.31implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.31implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.260.270.280.290.300.310.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.270.280.290.300.310.32implied volatility
+0.80.820.840.860.880.90.920.940.960.981
+1.021.041.061.081.11.121.141.161.181.2
+strikes0.280.290.300.310.320.330.34implied volatility
+Maturities Strike (Units of S0)
+0.85 0.9 0.95 1 1.05 1.1 1.15 1.2 1.3 1.4
+0.175 91.3 62.8 35.2 12.9 2.1 0.1 0.0 0.0 0.0 0.0
+0.425 96.3 69.0 44.0 23.3 8.5 2.3 0.4 0.2 0.0 0.0
+0.695 101.8 76.1 52.6 32.6 16.4 5.9 1.9 0.6 0.1 0.0
+0.940 106.8 82.2 59.9 39.9 23.8 11.3 4.7 1.8 0.2 0.0
+Table 13: European call prices for S&P 500 data set.
+19
+--- Page 20 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+Acknowledgements
+Special thanks to Prof. Sylvia Frühwirth-Schnatter for her helpful input and assistance with this project.
+References
+[1] Arribas, I., Salvi, C. & Szpruch, L. Sig-SDEs model for quantitative finance. (2020)
+[2] Bagnell, J. & Bradley, D. Learning in modular systems. (2010)
+[3] Bayer, C. & Stemper, B. Deep calibration of rough stochastic volatility models. (2018)
+[4]Ben Hamida, S. & Cont, R. Recovering V olatility from Option Prices by Evolutionary Optimization. The Journal
+Of Computational Finance .8pp. 43-76 (2005,1)
+[5]Black, F. & Scholes, M. The Pricing of Options and Corporate Liabilities. Journal Of Political Economy .81,
+637-654 (1973), http://www.jstor.org/stable/1831029
+[6]Brignone, R., Gonzato, L. & Lütkebohmert, E. Efficient Quasi-Bayesian Estimation of Affine Option Pricing
+Models Using Risk-Neutral Cumulants. Journal Of Banking & Finance .148pp. 106745 (2022,12)
+[7] Chataigner, M., Crépey, S. & Dixon, M. Deep Local V olatility. (2020)
+[8]Choudhary, V ., Jaimungal, S. & Bergeron, M. FuNV ol: A Multi-Asset Implied V olatility Market Simulator using
+Functional Principal Components and Neural SDEs. (2023)
+[9] Cohen, S., Reisinger, C. & Wang, S. Arbitrage-free neural-SDE market models. (2021)
+[10] Cohen, S., Reisinger, C. & Wang, S. Estimating risks of option books using neural-SDE market models. ArXiv
+Preprint arXiv:2202.07148 . (2022)
+[11] Cuchiero, C., Khosrawi, W. & Teichmann, J. A Generative Adversarial Network Approach to Calibration of Local
+Stochastic V olatility Models. Risks .8, 101 (2020,9), http://dx.doi.org/10.3390/risks8040101
+[12] Cuchiero, C., Gazzani, G. & Svaluto-Ferro, S. Signature-based models: theory and calibration. (2022)
+[13] Cuchiero, C., Gazzani, G., Möller, J. & Svaluto-Ferro, S. Joint calibration to SPX and VIX options with signature-
+based models. ArXiv Preprint arXiv:2301.13235 . (2023)
+[14] Cuchiero, C., Schmocker, P. & Teichmann, J. Global universal approximation of functional input maps on weighted
+spaces. (2023)
+[15] Cybenko, G. Approximation by superpositions of a sigmoidal function. Mathematics Of Control, Signals And
+Systems .2pp. 303-314 (1989), https://api.semanticscholar.org/CorpusID:3958369
+[16] Duembgen, M. & Rogers, L. Estimate nothing. (2014)
+[17] Gierjatowicz, P., Sabate-Vidales, M., Šiška, D., Szpruch, L. & Žuri ˇc, Ž. Robust pricing and hedging via neural
+SDEs. (2020)
+[18] Flonner, E. Robust financial calibration: a Bayesian approach for neural SDEs. GitHub Repository . (2024),
+https://github.com/evaflonner/Calibration-of-Neural-SDEs-using-Bayesian-Methods
+[19] Glorot, X. & Bengio, Y . Understanding the difficulty of training deep feedforward neural networks. AISTATS .
+(2010)
+[20] Greenberg, E. Advanced Econometrics: A Bridge to the Literature. (John Wiley & Sons,1983)
+[21] Gupta, A. & Reisinger, C. Robust calibration of financial models using Bayesian estimators. Journal Of Computa-
+tional Finance .17pp. 3-36 (2014)
+[22] Guyon, J. & Mustapha, S. Neural joint S&P 500/VIX smile calibration. Available At SSRN 4309576 . (2022)
+[23] Hornik, K. Approximation capabilities of multilayer feedforward networks. Neural Networks .4, 251-257 (1991),
+https://www.sciencedirect.com/science/article/pii/089360809190009T
+[24] Horvath, B., Muguruza, A. & Tomas, M. Deep Learning V olatility. (2019), https://arxiv.org/abs/1901.09647
+[25] Kidger, P., Morrill, J., Foster, J. & Lyons, T. Neural Controlled Differential Equations for Irregular Time Series.
+(2020)
+[26] Kingma, D. & Ba, J. Adam: A Method for Stochastic Optimization. (2017)
+20
+--- Page 21 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+[27] Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga,
+L., Desmaison, A., Kopf, A., Yang, E., DeVito, Z., Raison, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang,
+L., Bai, J. & Chintala, S. PyTorch: An Imperative Style, High-Performance Deep Learning Library. Advances In
+Neural Information Processing Systems 32 . pp. 8024-8035 (2019), http://papers.neurips.cc/paper/9015-pytorch-an-
+imperative-style-high-performance-deep-learning-library.pdf
+[28] Roberts, G. & Tweedie, R. Exponential convergence of Langevin distributions and their discrete approximations.
+Bernoulli .2pp. 341-363 (1996), https://api.semanticscholar.org/CorpusID:18787082
+[29] Ruf, J. & Wang, W. Neural networks for option pricing and hedging: a literature review. (2020)
+[30] Särkkä, S. & Solin, A. Applied Stochastic Differential Equations. (Cambridge University Press,2019)
+[31] Sontag, E. & Sussmann, H. Complete controllability of continuous-time recurrent neural networks. Systems &
+Control Letters .30, 177-183 (1997), https://www.sciencedirect.com/science/article/pii/S0167691197000029
+[32] Tegner, M. & Roberts, S. A Bayesian take on option pricing with Gaussian processes. (2021),
+https://api.semanticscholar.org/CorpusID:53140367
+[33] Yu, C., Li, H. & Wells, M. MCMC Estimation of Levy Jump Models Using Stock and Option Prices. Mathematical
+Finance .21(2011,7)
+21

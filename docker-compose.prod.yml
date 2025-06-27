@@ -1,0 +1,138 @@
+# Docker Compose Production Override
+# Use: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+version: '3.8'
+
+services:
+  # Production API
+  tradeknowledge-api:
+    build:
+      target: production
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=WARNING
+      # Production InfluxDB settings
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  # Production InfluxDB with enhanced security
+  influxdb:
+    environment:
+      # Production security settings
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+      - DOCKER_INFLUXDB_INIT_RETENTION=${INFLUXDB_RETENTION:-0s}
+      # Production performance tuning
+      - INFLUXD_LOG_LEVEL=warn
+      - INFLUXD_QUERY_CONCURRENCY=20
+      - INFLUXD_QUERY_QUEUE_SIZE=2000
+      - INFLUXD_HTTP_WRITE_TIMEOUT=60s
+      - INFLUXD_HTTP_READ_TIMEOUT=60s
+      # Security hardening
+      - INFLUXD_TLS_CERT=/etc/ssl/certs/influxdb.crt
+      - INFLUXD_TLS_KEY=/etc/ssl/private/influxdb.key
+    volumes:
+      # Production data persistence
+      - influxdb_prod_data:/var/lib/influxdb2
+      - influxdb_prod_config:/etc/influxdb2
+      # SSL certificates (add your certificates here)
+      # - ./ssl/influxdb.crt:/etc/ssl/certs/influxdb.crt:ro
+      # - ./ssl/influxdb.key:/etc/ssl/private/influxdb.key:ro
+      # Initialization scripts
+      - ./docker/influxdb/init:/docker-entrypoint-initdb.d:ro
+      # Production backups
+      - ./data/influxdb-backups:/backups
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+  # Production Redis with persistence
+  redis:
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1000
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Production Qdrant
+  qdrant:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Enable monitoring in production
+  prometheus:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  grafana:
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_INSTALL_PLUGINS=grafana-worldmap-panel,grafana-piechart-panel
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Production Nginx with SSL
+  nginx:
+    volumes:
+      - ./nginx/prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_prod_logs:/var/log/nginx
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+# Production-specific volumes
+volumes:
+  influxdb_prod_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/tradeknowledge/influxdb/data
+  influxdb_prod_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/tradeknowledge/influxdb/config
+  nginx_prod_logs:

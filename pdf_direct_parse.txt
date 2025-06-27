@@ -1,0 +1,388 @@
+
+--- Page 1 ---
+ROBUST FINANCIAL CALIBRATION :ABAYESIAN APPROACH FOR
+NEURAL SDE S
+A P REPRINT
+Christa Cuchiero∗
+University of Vienna,
+Department of Statistics and Operations Research,
+Kolingasse 14, 1090 Vienna, Austria
+christa.cuchiero@univie.ac.atEva Flonner
+Vienna University of Economics and Business,
+Institute for Statistics and Mathematics,
+Welthandelsplatz 1, 1020 Vienna, Austria
+eva.flonner@wu.ac.at
+Kevin Kurt
+IQAM Invest,
+Wollzeile 36-38 1010 Vienna, Austria
+kevin.kurt@iqam.com
+ABSTRACT
+The paper presents a Bayesian framework for the calibration of financial models using neural
+stochastic differential equations (neural SDEs). The method is based on the specification of a prior
+distribution on the neural network weights and an adequately chosen likelihood function. The
+resulting posterior distribution can be seen as a mixture of different classical neural SDE models
+yielding robust bounds on the implied volatility surface. Both, historical financial time series data and
+option price data are taken into consideration, which necessitates a methodology to learn the change
+of measure between the risk-neutral and the historical measure. The key ingredient for a robust
+numerical optimization of the neural networks is to apply a Langevin-type algorithm, commonly used
+in the Bayesian approaches to draw posterior samples.
+Keywords model calibration ·Bayesian ·neural SDE ·option pricing ·uncertainty quantification
+1 Introduction
+In financial institutions, the task of choosing one model from a pool of asset price models, given current market and
+historical data, is called calibration. Machine learning techniques started to offer new perspectives on this crucial
+task since they are computationally efficient and manage to capture empirically observed market characteristics. For
+instance, [ 17] or [ 11] and more recently [ 9] and [ 22] use so-called neural stochastic differential equations (neural SDEs)
+for solving the calibration problem in a setting where one is looking for a model which generates given (derivatives’)
+market prices. One key feature of neural SDEs is that by the universal approximation property of neural networks
+(see [ 15], [23], [31] ), all continuous characteristics of any SDE can be approximated on compacts. This ensures that
+the class is certainly rich enough to fit market data. [ 14] provide a global approximation result beyond compacts which
+can be useful in the analysis of approximation properties of neural SDEs, since the corresponding paths usually do not
+stay in compact sets almost surely.
+There are two drawbacks of the standard calibration approach using neural SDEs mentioned above: firstly, possible prior
+knowledge on appropriate distributions of the neural network weights is disregarded. Secondly, only point estimates
+of neural network weights are provided and thus there is no built-in uncertainty quantification on the resulting option
+prices. The latter is important to get robust price bounds for the asset pricing model at hand. In the following we
+attempt to tackle these aspects by proposing a Bayesian calibration algorithm for neural SDEs. Traditional calibration
+techniques for SDEs often aim to find a model that best replicates market data, in the sense of finding the ’true’ optimum
+∗Christa Cuchiero gratefully acknowledges financial support through grant Y 1235 of the START-program.arXiv:2409.06551v3  [q-fin.CP]  12 Sep 2024
+--- Page 2 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+with respect to a certain optimization criterion, which can be problematic given the inherently ill-posed nature of
+the calibration problem. Instead of seeking a singular solution, our Bayesian framework focuses on determining a
+distribution of plausible solutions.
+The core concept is to start with a prior distribution for the unknown parameters of the neural SDE model and then update
+this prior using the observed market data to derive a posterior distribution. We focus on constructing practical prior and
+likelihood functions and assessing the sensitivity of the Bayesian approach, with respect to the hyperparameter choices
+of the prior and likelihood functions. Our contribution also addresses the specific challenges of jointly calibrating to
+time-series data under the historical measure and derivatives’ price data under the risk neutral measure. This induces
+the need for measure changes, which we parameterize again by neural networks.
+One goal of this work is to serve as a proof of concept for applying Bayesian techniques to the highly flexible and
+dynamic framework of neural SDEs, highlighting the advantages of this approach. By fully integrating the power of
+neural networks with the stochastic nature of SDEs and addressing the complexities of including time series data as
+well as data on options, our approach opens new avenues for modeling in finance.
+1.1 Relation to the literature
+More broadly speaking and relating the current work to the literature, the application of machine learning techniques
+in mathematical finance has evolved rapidly over the last decades. Indeed, since the 1990s there is a big and steadily
+growing number of papers related to this topic, as outlined e.g., in [ 29]. We do not attempt to summarize all of them,
+but rather refer to some major milestones in view of model calibration and give a flavour of how to categorize earlier
+developments within this research area.
+If we focus on neural networks as a machine learning tool the first research category is utilising neural networks
+merely as a computational utility or as a method to store information. This is in order to avoid for instance slow and
+computationally heavy Monte Carlo sampling e.g. for pricing derivatives like VIX options. An example in this direction
+is the work by [ 3] or [ 24]. Another category builds on neural SDEs mentioned above, where the drift and diffusion
+function of classical SDEs are modeled by neural networks. Neural SDEs are a promising tool not only for (robust)
+pricing, hedging and calibration purposes (see [ 17]) but also for risk management or portfolio optimization. We also
+refer to [ 25], [8], [9], [10] and the references therein for learning features of neural SDEs and their employment for
+financial applications. In particular, in [ 9] an arbitrage-free neural SDE market model for European options is learnt by
+using discrete time series data as well as option price data.
+Let us mention in this context also so-called ’Sig-SDEs’ introduced by [ 1], where the volatility of the asset price process
+is modeled by means of a linear function of the (extended) signature of the driving Brownian motion. Signature here
+refers to the sequence of iterated Stratonovich integrals of the given Brownian motion. For other papers in the realm of
+calibration with signature methods we refer to [ 12,13], where the extended signature of some primary process, which
+does not have to be the (marked-inferred) Brownian motion, is used. The essence is the linearity of the model, which
+allows for fast and accurate calibrations results, using both time-series and implied volatility surface data, of the S&P
+500 as well as the VIX index.
+Other approaches, also based on machine learning tools, model directly the volatility surface without a dynamical
+arbitrage-free model, see e.g., [ 7] and the references therein. This article presents a deep learning method to produce
+the whole surface of local volatilities, enforcing no-arbitrage rules by applying Dupire’s formula to impose bounds on
+the local volatility related to the option prices.
+As far as Bayesian modeling in mathematical finance is concerned, one key reference for the current work is [ 21]. The
+paper introduces a Bayesian framework to calibrate local volatility models under the risk neutral measure based on the
+market’s derivatives prices. This leads to a posterior distribution of the model parameters. Another Bayesian approach
+is adopted in the paper ’Estimate nothing’ by [ 16]. There a mixture of different classical models is considered and a
+posterior distribution of the weights of the different models is obtained. To this end, also historical financial time series
+data is taken into consideration. More recent work employing Bayesian methods in the area of mathematical finance has
+been done by [ 32], where a local volatility model is equipped with a Gaussian process prior. This is done by defining a
+prior distribution over local volatility functions through a positive transformation of a Gaussian process with zero mean
+function and squared exponential covariance function, ensuring a smooth and positive volatility surface. Additionally, a
+hyperprior is placed on the parameters of the covariance function. [ 6] exploit Sequential Monte Carlo methods with a
+tempered likelihood to estimate option pricing models, allowing for two stochastic volatility factors, co-jumps between
+price and volatility as well as a stochastic jump intensity. The latent states in the Sequential Monte Carlo scheme are
+marginalized using risk-neutral cumulants which are given in closed form.
+2
+--- Page 3 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+As outlined in 1 the goal of the current paper is to unite the efforts described above and provide a Bayesian calibration
+framework based on neural SDEs. The paper is organized as follows: In Section 2 the model is introduced, in Section
+3 we propose a change of measure for neural SDEs, section 4 recalls a variance reduction technique, that is an
+essential ingredient for the proposed algorithm, Section 5 and 6 are the core of the paper, as they specify the Bayesian
+methodology to calibrate the neural SDE model under the historical and risk neutral measure, Section 7 provides
+a sensitivity analysis with respect to hyperparameter values, followed by an empirical study in Section 8, possible
+technical modifications in Section 9 and a conclusion inside 10.
+2 Stochastic volatility models as neural SDEs
+Similarly as in [ 17], fix T > 0and assume a constant interest rate r∈R. Furthermore consider a parameter space
+Θ = ΘbV×Θσ×ΘσV⊂Rpand functions bV: [0, T]×R×ΘbV→R,σ: [0, T]×R2×Θσ→Rand
+σV: [0, T]×R×ΘσV→R. Let (W1
+t)t∈[0,T]be a standard Brownian motion supported on (Ω,F,(Ft)t∈[0,T],Q).
+Consider the parametric SDE
+dSθ
+t=rSθ
+tdt+σ(t, Sθ
+t, Vθ
+t, θ)Sθ
+tdW1
+t, (1)
+dVθ
+t=bV(t, Vθ
+t, θ)dt+σV(t, Vθ
+t, θ)dW2
+t, (2)
+where dW2
+t=ρW1
+t+p
+1−ρ2Zt, with Ztbeing a Brownian motion independent from W1
+t,ρ∈[−1,1]being
+constant parameter and where (Vθ
+t)t≥0controls the spot variance process in our stochastic volatility model. Note that
+the model is free of arbitrage by construction, since (e−rtSθ
+t)t∈[0,T]is a local martingale. From now on we will refer
+to the risk-neutral measure, corresponding to the neural network parameters θ, asQ(θ). Furthermore define for all
+t∈[0, T]andθ∈Rp, the functions bandσxby
+b(t,(s, v), θ) := ( rs, bV(t, v, θ ))∈R2andσx(t,(s, v), θ) := ( sσ(t, s, v, θ ), σV(t, v, θ ))∈R2,
+where the first component of these functions refers to the Sθ-part and the second to the Vθ-part.
+In the case where (σ, bV, σV)are defined to be neural networks we call (1),(2)a system of neural SDEs. In the sequel
+we use SθandVθwhenever we refer to the model quantities and SandVwhenever we refer to quantities based on
+empirical data.
+By the universal approximation property of neural networks discussed in the introduction, all continuous characteristics
+of the SDE system (1)-(2)can be approximated on compacts. We also recall that the main advantage of neural SDEs is
+that they allow to combine the appealing flexibility of neural networks, in particular in view of optimization techniques
+via stochastic gradient descent methods, with well-known theory from mathematical finance based on continuous
+semimartingales. In view of model calibration, one main goal of this paper is to present a robust methodology to learn
+the parameters of the neural networks (σ, bV, σV)from market data. To this end we take both, derivatives’ prices and
+time series data into account.
+3 Change of measure for neural SDEs
+The calibration of neural SDEs can in principle be extended to the real world measure by considering an additional
+parametric function ζ: [0, T]×R2×Rp→R2that could be another neural network and by extending the parameter
+space to Θ = Θb×Θσ×Θζ⊂Rp2. LetYt= log Stand define the historical measure P(θ)via the Radon-Nikodym
+derivative
+dP(θ)
+dQ(θ):= expZT
+0
+ζ1(t, Yθ
+t, Vθ
+t, θ)
+ζ2(t, Yθ
+t, Vθ
+t, θ)⊤σ(t, Sθ
+t, Vθ
+t, θ) 0
+ρσV(t, Vθ
+t, θ)p
+1−ρ2σV(t, Sθ
+t, Vθ
+t, θ)
+dW1
+t
+dW2
+t
+. (3)
+The drift parts under this measure are now defined via
+bY,P(t, Yθ
+t, Vθ
+t, θ):=r−1
+2σ(t,exp(Yθ
+t), Vθ
+t, θ)2+ (σ(t,exp(Yθ
+t), Vθ
+t, θ))2ζ1(t, Yθ
+t, Vθ
+t, θ) (4)
++ρσ(t,exp(Yθ
+t), Vθ
+t, θ)σV(t, Vθ
+t, θ)ζ2(t, Yθ
+t, Vθ
+t, θ), (5)
+bV,P(t, Yθ
+t, Vθ
+t, θ):=bV(t, Vθ
+t, θ) +ρσ(t,exp(Yθ
+t), Vθ
+t, θ)σV(t, Vθ
+t, θ)ζ1(t, Yθ
+t, Vθ
+t, θ) (6)
++ (σV(t, Vθ
+t, θ))2ζ2(t, Yθ
+t, Vθ
+t, θ), (7)
+2For notational convenience we still denote the dimension of the parameter space by p
+3
+--- Page 4 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+where ζplays the role of the market price of risk. Assuming that ζis such that Novikov’s condition is satisfied,
+Girsanov’s theorem yields a Brownian motion (WP(θ)
+t)t∈[0,T]such that
+WP(θ)
+t=Wt−Zt
+0ζ1(s, Yθ
+s, Vθ
+s, θ)σ(s, Sθ
+s, Vθ
+s, θ) +ζ2(s, Yθ
+s, Vθ
+s, θ)ρσV(s, Sθ
+s, Vθ
+s, θ)
+ζ2(s, Yθ
+s, Vθ
+s, θ)p
+1−ρ2σV(s, Sθ
+s, Vθ
+s, θ)
+ds,
+where W= (W1, W2)and
+dYθ
+t=bY,P(t, Yθ
+t, Vθ
+t, θ)dt+σ(t,exp(Yθ
+t), Vθ
+t, θ)dWP(θ),1
+t , (8)
+dVθ
+t=bV,P(t, Vθ
+t, θ)dt+σV(t, Vθ
+t, θ)(ρdWP(θ),1
+t +p
+1−ρ2dWP(θ),2
+t ). (9)
+This neural SDE under the historical measure P(θ)can now be used to learn the market price of risk using market data
+such as a time series of asset prices.
+Note that the proposal of [ 17] to calibrate under the historical measure as well as under the risk neutral one is actually
+implemented and transferred into a Bayesian framework.
+4 Variance reduction for Monte Carlo pricing via hedging strategies
+As outlined, e.g. in [ 11] and [ 17] variance reduction in the computation of the Monte Carlo price of an option can be
+achieved using an approximate hedging portfolio with a large correlation between the option payoff and the hedge.
+In our setting this variance reduction will be achieved using hedging strategies which are parameterized via neural
+networks. More specifically, consider ptraded hedging instruments (Zt)t∈[0,T](including in particular the traded assets
+Sθ) which are square integrable martingales under the risk neutral measure Q(θ)and take values in Rp. Assume that the
+payoff of the option is a function of the terminal values of Z, i.e.C=g(ZT). Given a Markovian model the hedging
+strategy can now be specified by means of a function
+h:R+×Rp→Rp, ht=h(t, z),
+where hwill be parameterized as a neural network. Now the optimal hedge determined via some convex loss function
+l:R→R+for the claim Cwith corresponding market price Cmktcan be computed by
+inf
+ξE[l(−C+Cmkt+ (h(·, Z·, ξ)·Z·)T)],
+where ξstands for the weights of the neural network hand(h·Z)Tdenotes the stochastic integral with respect to Z.
+Modifying the calibration objective via the above explained variance reduction by means of hedging strategies allows a
+substantial reduction in the number of Monte Carlo samples.
+5 Robust option calibration
+To obtain a posterior distribution over derivatives prices and in turn price bounds for derivatives, first a likelihood
+function will be specified. Together with a prior distribution p(θ)on the weights θof the neural networks (σ, bV, σV)
+appearing in the neural SDE system (1),(2), the desired posterior distribution will then be obtained explicitly. The
+calibration to derivatives will be with respect to call options only. However, the loss function specified in the following
+subchapter can be easily modified to allow for different terminal value payoffs.
+5.1 Option calibration
+The likelihood is defined via assumptions on the deviations of the options’ market prices to the ’true’ model prices
+as specified below. The observed market prices are specified as mid prices of bid and ask prices, i.e. C(i)
+mkt=
+1
+2 
+C(i)bid
+mkt+C(i)ask
+mkt
+,i= 1, ..., J . The options are written on the underlying Sand their payoffs are denoted by
+{Φi}J
+i=1, where Jdenotes the number of options considered. From now on we assume for notational simplicity that
+r= 0, unless specified otherwise. We write C(i)
+mod(θ) =EQ(θ)[Φi]for the corresponding model prices with model
+parameters θ. Similarly as in [ 21], letδi=104
+S0|C(i)ask
+mkt−C(i)bid
+mkt|denote the basis point bid-ask spread of the ith
+option at time zero. Then the basis point calibration error for the ithoption is supposed to be normally distributed as
+104
+S0(C(i)
+mod(θ)−C(i)
+mkt)∼ N(0, δ2
+i). (10)
+4
+--- Page 5 ---
+Robust financial calibration: a Bayesian approach for neural SDEs A P REPRINT
+The natural interpretation of (10) is that in theory there exists a ’true’ model yielding an arbitrage free market and
+that the market price of the option equals its model price plus some normally distributed random noise. In order to fit
+the implied volatility surface the basis point error function for calibration will be modified using a weighting scheme
+(compare [4]). Indeed, define δ2=1PJ
+i=11
+δ2
+iandwi=δ2
+δ2
+iso that
+104
+S0(√w1(C(1)
+mod(θ)−C(1)
+mkt), . . . ,√wJ(C(J)
+mod(θ)−C(J)
+mkt))∼ N(0, δ2IJ), (11)
+where IJdenotes the J×Jidentity matrix. Note thatPJ
+i=1wi= 1, by definition. The corresponding likelihood is
+then proportional to exp(−1
+2δ2G(θ))where G(θ)is defined as
+G(θ) =108
+S2
+0JX
+i=1wi|C(i)
+mod(θ)−C(i)
+mkt|2. (12)
+With this specify the Bayesian likelihood function as
+-
+l(Cmkt|θ) =l((C1
+mkt, . . . , CJ
+mkt)|θ)∝exp(−1
+2δ2G(θ)). (13)
+The prior distribution for the neural network weights θplays a crucial role in the Bayesian modeling framework. In
+many applications, historical data or expert knowledge may be used for this prior decision. In this work, the prior
+choice is found through theoretical considerations about neural network initialization. More precisely, it corresponds to
+the so called Glorot normal initialization, introduced in [19]. In this work the authors study the forward pass equation
+and back-propagated gradients, inspired by the paper [ 2], who established that the variance of the back-propagated
+gradients diminishes as one moves from the output layer to the input layer, even if no training has occurred yet. [ 19]
+consider a simplified setting to propose a heuristic for the initialization of neural network parameters, maintaining a
+high information flow across layers. The authors suggest to randomly initialize neural network weights drawing from a
+normal distribution centered at zero with standard deviation
+σprior =g·r
+2
+fan in +fan out, (14)
+where gdenotes an optional scaling factor, fan in stands for the number of neurons in the predecessor layer and fan out
+stands for the number of neurons in the successor layer, so that the initialization scheme depends on the width of layers.
+Thus, the prior distribution is specified as
+p(θ)∼ N(0, σ2
+priorIJ). (15)
+Since in our architecture, the hidden layers are of width 100, the value of σprior is approximately 0.15 for most neural
+network weights, as the scaling factor gis chosen to be 1.5. We will study in a later section how the prior variance
+affects the convergence of the suggested algorithm.
+The posterior distribution can now be derived explicitly using the prior and likelihood formulated above as
+f(θ|Cmkt) =l(Cmkt|θ)·p(θ)∝exp(−1
+2δ2G(θ))·exp(−||θ||2
+2σ2
+prior). (16)
+We would like to emphasize that the inclusion of the prior term corresponds to Tikhonov regularization with parameter
+δ2/σ2
+prior as is explained in [20] for instance.
+5.2 Training the model
+Note that in practice the true model price for the call option iwith maturity Ti, strike Kiand payoff Φi= (Sθ
+Ti−Ki)+,
+given by C(i)
+mod(θ) =EQ(θ)[Φi], needs to be approximated. The choice of the standard Monte Carlo estimator means
+that after simulating Mprice trajectories (ωm)M
+m=1a Monte Carlo approximation to C(i)
+mod(θ)is given by computing
+C(i)
+mod(θ) =1
+MPM
+m=1(Sθ
+Ti(ωm)−Ki)+, under the risk-neutral measure. This then leads to an approximation of G(θ)
+as
+G(θ) =108
+S2
+0JX
+i=1wi|C(i)
+mod(θ)−C(i)
+mkt|2≈108
+S2
+0JX
+i=1wi|(1
+MMX
+m=1(Sθ
+Ti(ωm)−Ki)+)−C(i)
+mkt|2.
+5
