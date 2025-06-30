@@ -1,0 +1,349 @@
+# Desktop Implementation Manifest
+# TradeKnowledge Laptop → Desktop Sync
+# Generated: 2024-06-30
+# Source: laptop-dev branch developments since 6am
+
+MANIFEST_VERSION=1.0
+SOURCE_DEVICE=laptop
+TARGET_DEVICE=desktop
+IMPLEMENTATION_DATE=2024-06-30
+LAST_COMMIT=0ea6c34
+
+## ============================================================================
+## OVERVIEW
+## ============================================================================
+
+This manifest contains all developments made on the laptop since 6am today:
+
+1. LLMLingua Auto-Start Integration
+2. FastAPI JWT Authentication System (FIRE workflow result)
+3. Git Branch Strategy with device-specific configurations
+4. SuperClaude Integration
+5. Enhanced agent configurations
+6. Quality standards and testing frameworks
+
+Total Files: 60+
+New Services: 2 (LLMLingua, SuperClaude)
+New Branches: laptop-dev (to be replicated as desktop-dev)
+
+## ============================================================================
+## PRE-REQUISITES
+## ============================================================================
+
+REQUIRED_PYTHON_VERSION=3.11+
+REQUIRED_GIT_VERSION=2.30+
+REQUIRED_DISK_SPACE=500MB
+REQUIRED_MEMORY=2GB
+
+# Desktop-specific paths (adjust as needed)
+DESKTOP_USER=scott
+DESKTOP_HOME=/home/scott
+DESKTOP_WORKSPACE=/home/scott/Desktop/TradeKnowledge
+CLAUDE_CONFIG_DIR=/home/scott/.claude
+
+## ============================================================================
+## ENVIRONMENT SETUP
+## ============================================================================
+
+# Step 1: Update Claude configuration directory
+[ENV_SETUP]
+mkdir -p ${CLAUDE_CONFIG_DIR}
+mkdir -p ${CLAUDE_CONFIG_DIR}/logs
+
+# Step 2: Set desktop environment variables
+export DEVICE_NAME=desktop
+export DEVICE_TYPE=development
+export LLMLINGUA_PORT=8766
+export LLMLINGUA_HOST=localhost
+
+## ============================================================================
+## FILE TRANSFER MANIFEST
+## ============================================================================
+
+[GLOBAL_CONFIG_FILES]
+~/.claude/CLAUDE.md -> ${CLAUDE_CONFIG_DIR}/CLAUDE.md
+~/.claude/startup_services.sh -> ${CLAUDE_CONFIG_DIR}/startup_services.sh
+
+[PROJECT_ROOT_FILES]
+./.env.laptop -> ./.env.laptop
+./.env.desktop -> ./.env.desktop
+./SUPERCLAUDE_INTEGRATION.md -> ./SUPERCLAUDE_INTEGRATION.md
+./DESKTOP_IMPLEMENTATION.mf -> ./DESKTOP_IMPLEMENTATION.mf
+
+[LLMLINGUA_INTEGRATION]
+./src/core/llmlingua_service_runner.py -> ./src/core/llmlingua_service_runner.py
+
+[SUPERCLAUDE_INTEGRATION]
+./src/integrations/__init__.py -> ./src/integrations/__init__.py
+./src/integrations/superclaude_sync.py -> ./src/integrations/superclaude_sync.py
+
+[FASTAPI_AUTH_SYSTEM]
+./fastapi_auth/.env.example -> ./fastapi_auth/.env.example
+./fastapi_auth/Dockerfile -> ./fastapi_auth/Dockerfile
+./fastapi_auth/README.md -> ./fastapi_auth/README.md
+./fastapi_auth/docker-compose.yml -> ./fastapi_auth/docker-compose.yml
+./fastapi_auth/pytest.ini -> ./fastapi_auth/pytest.ini
+./fastapi_auth/requirements.txt -> ./fastapi_auth/requirements.txt
+./fastapi_auth/app/__init__.py -> ./fastapi_auth/app/__init__.py
+./fastapi_auth/app/config.py -> ./fastapi_auth/app/config.py
+./fastapi_auth/app/database.py -> ./fastapi_auth/app/database.py
+./fastapi_auth/app/main.py -> ./fastapi_auth/app/main.py
+./fastapi_auth/app/middleware/__init__.py -> ./fastapi_auth/app/middleware/__init__.py
+./fastapi_auth/app/middleware/auth_middleware.py -> ./fastapi_auth/app/middleware/auth_middleware.py
+./fastapi_auth/app/models/__init__.py -> ./fastapi_auth/app/models/__init__.py
+./fastapi_auth/app/models/user.py -> ./fastapi_auth/app/models/user.py
+./fastapi_auth/app/routers/__init__.py -> ./fastapi_auth/app/routers/__init__.py
+./fastapi_auth/app/routers/auth.py -> ./fastapi_auth/app/routers/auth.py
+./fastapi_auth/app/routers/users.py -> ./fastapi_auth/app/routers/users.py
+./fastapi_auth/app/schemas/__init__.py -> ./fastapi_auth/app/schemas/__init__.py
+./fastapi_auth/app/schemas/user.py -> ./fastapi_auth/app/schemas/user.py
+./fastapi_auth/app/services/__init__.py -> ./fastapi_auth/app/services/__init__.py
+./fastapi_auth/app/services/auth_service.py -> ./fastapi_auth/app/services/auth_service.py
+./fastapi_auth/app/services/user_service.py -> ./fastapi_auth/app/services/user_service.py
+./fastapi_auth/tests/__init__.py -> ./fastapi_auth/tests/__init__.py
+./fastapi_auth/tests/conftest.py -> ./fastapi_auth/tests/conftest.py
+./fastapi_auth/tests/test_auth.py -> ./fastapi_auth/tests/test_auth.py
+./fastapi_auth/tests/test_services.py -> ./fastapi_auth/tests/test_services.py
+./fastapi_auth/tests/test_users.py -> ./fastapi_auth/tests/test_users.py
+
+[ENHANCED_AGENTS]
+./agents/executor/CLAUDE_ENHANCED.md -> ./agents/executor/CLAUDE_ENHANCED.md
+./agents/mastermind/CLAUDE_ENHANCED.md -> ./agents/mastermind/CLAUDE_ENHANCED.md
+./agents/researcher/CLAUDE_ENHANCED.md -> ./agents/researcher/CLAUDE_ENHANCED.md
+
+[ANALYSIS_AND_TESTING]
+./analyze_feedback.py -> ./analyze_feedback.py
+./executor_detailed_feedback.md -> ./executor_detailed_feedback.md
+./feedback_report.md -> ./feedback_report.md
+./fire_cross_validation.py -> ./fire_cross_validation.py
+./generate_feedback_report.py -> ./generate_feedback_report.py
+./get_detailed_executor_feedback.py -> ./get_detailed_executor_feedback.py
+./iwm_analysis.py -> ./iwm_analysis.py
+./iwm_comprehensive_analysis.py -> ./iwm_comprehensive_analysis.py
+./sparc_quality_standards.py -> ./sparc_quality_standards.py
+./test_enhanced_agents.py -> ./test_enhanced_agents.py
+./test_enhanced_agents_simple.py -> ./test_enhanced_agents_simple.py
+./test_fire_with_cross_validation.py -> ./test_fire_with_cross_validation.py
+./test_improved_executor.py -> ./test_improved_executor.py
+./test_improved_executor_simple.py -> ./test_improved_executor_simple.py
+./test_sparc_quality_tdd.py -> ./test_sparc_quality_tdd.py
+./test_trading_executor_v2.py -> ./test_trading_executor_v2.py
+
+[DOCUMENTATION]
+./FIRE_PRODUCTION_READINESS_ASSESSMENT.md -> ./FIRE_PRODUCTION_READINESS_ASSESSMENT.md
+./TODAYS_DEVELOPMENT_SUMMARY_20241229.md -> ./TODAYS_DEVELOPMENT_SUMMARY_20241229.md
+
+[UPDATED_EXISTING_FILES]
+./.mcp.json -> ./.mcp.json
+./agents/blackboard.md -> ./agents/blackboard.md
+./agents/core/mcp_integration.py -> ./agents/core/mcp_integration.py
+./agents/enhanced_blackboard.py -> ./agents/enhanced_blackboard.py
+./agents/tools/mcp_research_tools.py -> ./agents/tools/mcp_research_tools.py
+./data/persistent/.memory -> ./data/persistent/.memory
+./fire -> ./fire
+
+## ============================================================================
+## DESKTOP CONFIGURATION ADAPTATIONS
+## ============================================================================
+
+[PATH_ADAPTATIONS]
+# Replace laptop paths with desktop paths in the following files:
+FILES_REQUIRING_PATH_UPDATE:
+- .env.desktop
+- startup_services.sh
+- superclaude_sync.py (config section)
+
+LAPTOP_PATH_PATTERN=/home/scottschweizer
+DESKTOP_PATH_REPLACEMENT=/home/scott
+
+LAPTOP_WORKSPACE=/home/scottschweizer/TradeKnowledge
+DESKTOP_WORKSPACE=/home/scott/Desktop/TradeKnowledge
+
+[PORT_CONFIGURATIONS]
+# Desktop uses different ports to avoid conflicts
+LAPTOP_LLMLINGUA_PORT=8765
+DESKTOP_LLMLINGUA_PORT=8766
+
+LAPTOP_FASTAPI_PORT=8000
+DESKTOP_FASTAPI_PORT=8001
+
+[DEVICE_SPECIFIC_SETTINGS]
+# Desktop-optimized performance settings
+MAX_WORKERS=4  # Desktop has more resources
+COMPRESSION_TIMEOUT=60  # Longer timeout for desktop
+CACHE_SIZE=500MB  # Larger cache on desktop
+
+## ============================================================================
+## IMPLEMENTATION STEPS
+## ============================================================================
+
+[STEP_1_GIT_SETUP]
+# Ensure clean git state
+git status
+git stash  # If there are uncommitted changes
+
+# Pull latest changes from laptop
+git checkout main
+git pull origin main
+git pull origin laptop-dev
+
+# Create desktop branch
+git checkout -b desktop-dev
+git push -u origin desktop-dev
+
+[STEP_2_DIRECTORY_SETUP]
+# Create required directories
+mkdir -p ${DESKTOP_WORKSPACE}/src/core
+mkdir -p ${DESKTOP_WORKSPACE}/src/integrations
+mkdir -p ${DESKTOP_WORKSPACE}/fastapi_auth
+mkdir -p ${DESKTOP_WORKSPACE}/agents/{executor,mastermind,researcher}
+mkdir -p ${CLAUDE_CONFIG_DIR}/logs
+
+[STEP_3_FILE_TRANSFER]
+# Copy files according to manifest
+# Use rsync or scp from laptop to desktop
+rsync -av --progress laptop_user@laptop_ip:/home/scottschweizer/TradeKnowledge/ ${DESKTOP_WORKSPACE}/
+rsync -av --progress laptop_user@laptop_ip:/home/scottschweizer/.claude/ ${CLAUDE_CONFIG_DIR}/
+
+[STEP_4_PATH_ADAPTATION]
+# Update paths in configuration files
+sed -i 's|/home/scottschweizer|/home/scott|g' ${DESKTOP_WORKSPACE}/.env.desktop
+sed -i 's|/home/scottschweizer|/home/scott|g' ${CLAUDE_CONFIG_DIR}/startup_services.sh
+sed -i 's|8765|8766|g' ${DESKTOP_WORKSPACE}/.env.desktop
+
+[STEP_5_PERMISSIONS]
+# Set correct permissions
+chmod +x ${CLAUDE_CONFIG_DIR}/startup_services.sh
+chmod +x ${DESKTOP_WORKSPACE}/src/core/llmlingua_service_runner.py
+chmod +x ${DESKTOP_WORKSPACE}/src/integrations/superclaude_sync.py
+
+[STEP_6_ENVIRONMENT_SETUP]
+# Create desktop environment file
+cp ${DESKTOP_WORKSPACE}/.env.desktop ${DESKTOP_WORKSPACE}/.env
+
+# Install dependencies
+cd ${DESKTOP_WORKSPACE}
+pip install -r requirements.txt
+cd fastapi_auth && pip install -r requirements.txt
+
+[STEP_7_GIT_CONFIGURATION]
+# Configure git for desktop
+git config --local branch.desktop-dev.device desktop
+git config --local alias.sync-main '!git checkout main && git pull origin main'
+git config --local alias.sync-desktop '!git checkout desktop-dev && git merge main'
+
+[STEP_8_SERVICE_INITIALIZATION]
+# Test LLMLingua service
+python -m src.core.llmlingua_service_runner --test
+
+# Test SuperClaude integration
+python -m src.integrations.superclaude_sync --setup
+python -m src.integrations.superclaude_sync --test
+
+## ============================================================================
+## VERIFICATION CHECKLIST
+## ============================================================================
+
+[HEALTH_CHECKS]
+✓ Git repository status clean
+✓ Desktop branch created and configured
+✓ All files transferred and paths updated
+✓ LLMLingua service starts on port 8766
+✓ SuperClaude integration configured
+✓ FastAPI auth system tests pass
+✓ Agent configurations accessible
+✓ Environment variables set correctly
+
+[VERIFICATION_COMMANDS]
+# Test LLMLingua auto-start
+${CLAUDE_CONFIG_DIR}/startup_services.sh
+
+# Verify LLMLingua service
+curl http://localhost:8766/health
+
+# Test SuperClaude integration
+python -m src.integrations.superclaude_sync --health
+
+# Test FastAPI authentication
+cd fastapi_auth && python -c "from app.main import app; print('FastAPI imports successfully')"
+
+# Test agent configurations
+ls agents/*/CLAUDE_ENHANCED.md
+
+# Verify git configuration
+git config --list | grep desktop
+
+[SERVICE_ENDPOINTS]
+LLMLingua Service: http://localhost:8766
+LLMLingua Health: http://localhost:8766/health
+LLMLingua Test: http://localhost:8766/test
+FastAPI Auth: http://localhost:8001 (when running)
+
+## ============================================================================
+## ROLLBACK PROCEDURES
+## ============================================================================
+
+[ROLLBACK_COMMANDS]
+# If implementation fails, rollback to previous state
+git checkout main
+git branch -D desktop-dev
+rm -rf ${DESKTOP_WORKSPACE}/fastapi_auth
+rm -rf ${DESKTOP_WORKSPACE}/src/integrations
+rm ${CLAUDE_CONFIG_DIR}/startup_services.sh
+
+[BACKUP_RECOMMENDATIONS]
+# Before implementation, backup:
+cp -r ${DESKTOP_WORKSPACE} ${DESKTOP_WORKSPACE}.backup
+cp -r ${CLAUDE_CONFIG_DIR} ${CLAUDE_CONFIG_DIR}.backup
+
+## ============================================================================
+## POST-IMPLEMENTATION TASKS
+## ============================================================================
+
+[ONGOING_MAINTENANCE]
+1. Sync with main branch weekly: git sync-main && git sync-desktop
+2. Update device-specific configurations as needed
+3. Monitor service logs in ${CLAUDE_CONFIG_DIR}/logs/
+4. Update SuperClaude export directory settings
+5. Test LLMLingua compression regularly
+6. Verify FastAPI auth system functionality
+
+[DAILY_WORKFLOW]
+1. Start Claude Code → services auto-start
+2. Work on desktop-dev branch
+3. Sync with laptop-dev periodically
+4. Use SuperClaude for web interactions
+5. Commit desktop-specific changes
+
+## ============================================================================
+## SUPPORT INFORMATION
+## ============================================================================
+
+[TROUBLESHOOTING]
+- LLMLingua fails to start: Check port 8766 availability
+- SuperClaude sync issues: Verify export directory permissions
+- FastAPI import errors: Check Python environment and dependencies
+- Git conflicts: Use device-specific branches consistently
+
+[DOCUMENTATION_REFERENCES]
+- FastAPI Auth: ./fastapi_auth/README.md
+- SuperClaude: ./SUPERCLAUDE_INTEGRATION.md
+- FIRE Workflow: ./FIRE_PRODUCTION_READINESS_ASSESSMENT.md
+- Quality Standards: ./sparc_quality_standards.py
+
+[CONTACT]
+Manifest Generated By: Claude Code SPARC Trio
+Implementation Source: laptop-dev branch
+Target Environment: desktop-dev branch
+Validation Required: All health checks must pass
+
+## ============================================================================
+## MANIFEST CHECKSUM
+## ============================================================================
+
+MANIFEST_MD5=<calculated_after_file_creation>
+IMPLEMENTATION_STATUS=READY_FOR_DEPLOYMENT
+ESTIMATED_SETUP_TIME=30-45_minutes
+COMPLEXITY_LEVEL=MODERATE
+
+# End of Desktop Implementation Manifest
