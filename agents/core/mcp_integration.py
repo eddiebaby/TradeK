@@ -12,8 +12,24 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from agents.mcp import MCPServer, MCPServerStdio, MCPServerSse, MCPServerStreamableHttp
-from agents import Agent, Runner, trace
+try:
+    from mcp.client.stdio import StdioClient
+    from mcp.client.session import ClientSession
+    from mcp.server import Server as MCPServer
+    from mcp.server.stdio import stdio_server
+    from mcp.server.sse import sse_server
+    from mcp.server.streamable_http import streamable_http_server
+    from mcp import StdioServerParameters
+    MCP_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  MCP not available: {e}")
+    # Create mock classes for fallback
+    class StdioClient: pass
+    class ClientSession: pass
+    class MCPServer: pass
+    class StdioServerParameters: pass
+    MCP_AVAILABLE = False
+
 from core.agent_base import BaseAgent, TaskContext
 
 
@@ -90,27 +106,26 @@ class MCPServerManager:
             self.logger.error(f"Failed to add MCP server '{config.name}': {e}")
             return False
     
-    async def _create_server(self, config: MCPServerConfig) -> MCPServer:
+    async def _create_server(self, config: MCPServerConfig):
         """Create MCP server based on configuration."""
         
+        if not MCP_AVAILABLE:
+            self.logger.warning("MCP not available, returning mock server")
+            return None
+        
         if config.server_type == "stdio":
-            return MCPServerStdio(
+            return StdioClient(
                 name=config.name,
-                params=config.connection_params,
-                cache_tools_list=config.tools_cache_enabled
+                params=config.connection_params
             )
         elif config.server_type == "sse":
-            return MCPServerSse(
-                name=config.name,
-                params=config.connection_params,
-                cache_tools_list=config.tools_cache_enabled
-            )
+            # SSE client not directly available, use mock for now
+            self.logger.warning("SSE client not implemented, using mock")
+            return None
         elif config.server_type == "streamable_http":
-            return MCPServerStreamableHttp(
-                name=config.name,
-                params=config.connection_params,
-                cache_tools_list=config.tools_cache_enabled
-            )
+            # HTTP client not directly available, use mock for now
+            self.logger.warning("HTTP client not implemented, using mock")
+            return None
         else:
             raise ValueError(f"Unsupported server type: {config.server_type}")
     
@@ -122,10 +137,18 @@ class MCPServerManager:
         
         try:
             server = self.servers[server_name]
-            tools = await server.list_tools()
-            self.available_tools[server_name] = {
-                tool.get("name", ""): tool for tool in tools
-            }
+            if server is None:  # Mock server
+                self.available_tools[server_name] = {}
+                return
+                
+            if hasattr(server, 'list_tools'):
+                tools = await server.list_tools()
+                self.available_tools[server_name] = {
+                    tool.get("name", ""): tool for tool in tools
+                }
+            else:
+                self.logger.warning(f"Server {server_name} does not support list_tools")
+                self.available_tools[server_name] = {}
             
         except Exception as e:
             self.logger.error(f"Failed to refresh tools for server '{server_name}': {e}")

@@ -182,6 +182,30 @@ class MCPWebScraperAdvanced:
             "performance_metrics": re.findall(r'\d+\s*(ms|seconds|rps|ops)', content),
             "code_examples": re.findall(r'```[\s\S]*?```', content)
         }
+    
+    async def _extract_blog_content(self, content: str) -> Dict[str, Any]:
+        """Extract blog post content with focus on insights and examples."""
+        return {
+            "key_insights": re.findall(r'[A-Z][^.!?]*[.!?]', content)[:5],
+            "examples": re.findall(r'example:.*?[.!?]', content, re.IGNORECASE),
+            "recommendations": re.findall(r'(should|must|recommend).*?[.!?]', content, re.IGNORECASE)
+        }
+    
+    async def _extract_github_content(self, content: str) -> Dict[str, Any]:
+        """Extract GitHub repository content focusing on code patterns."""
+        return {
+            "code_snippets": re.findall(r'```[\s\S]*?```', content),
+            "file_structures": re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*\.(py|js|ts|go|java)', content),
+            "dependencies": re.findall(r'import\s+[a-zA-Z_][a-zA-Z0-9_.]*', content)
+        }
+    
+    async def _extract_stackoverflow_content(self, content: str) -> Dict[str, Any]:
+        """Extract Stack Overflow content focusing on solutions and best practices."""
+        return {
+            "solutions": re.findall(r'```[\s\S]*?```', content),
+            "best_practices": re.findall(r'(best practice|recommended).*?[.!?]', content, re.IGNORECASE),
+            "common_issues": re.findall(r'(problem|issue|error).*?[.!?]', content, re.IGNORECASE)[:3]
+        }
 
 
 class MCPDocumentationAnalyzer:

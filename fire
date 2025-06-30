@@ -28,7 +28,7 @@ import click
 import json
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 # Add project root to Python path
@@ -89,7 +89,7 @@ class FireCommand:
     async def validate_environment(self) -> Dict[str, Any]:
         """Validate production environment readiness."""
         validation = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "session_id": self.session_id,
             "environment": {},
             "dependencies": {},
@@ -177,7 +177,7 @@ class FireCommand:
         execution_config = {
             "task": task,
             "session_id": self.session_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "stack": kwargs.get("stack", "fastapi"),
             "deploy": kwargs.get("deploy", "docker"),
             "quality": kwargs.get("quality", "production"),

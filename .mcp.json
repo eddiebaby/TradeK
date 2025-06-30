@@ -56,14 +56,15 @@
     },
     "zen-mcp-server": {
       "type": "stdio",
-      "command": "/home/scott/TradeKnowledge/mcp-management/servers/zen-mcp-server/.zen_venv/bin/python",
+      "command": "/home/scottschweizer/TradeKnowledge/zen-mcp-server/.zen_venv/bin/python",
       "args": [
         "server.py"
       ],
       "env": {
-        "GEMINI_API_KEY": "$GEMINI_API_KEY"
+        "GEMINI_API_KEY": "$GEMINI_API_KEY",
+        "OPENAI_API_KEY": "$OPENAI_API_KEY"
       },
-      "cwd": "/home/scott/TradeKnowledge/mcp-management/servers/zen-mcp-server"
+      "cwd": "/home/scottschweizer/TradeKnowledge/zen-mcp-server"
     },
     "context7": {
       "type": "stdio",
