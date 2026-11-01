@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "algobot"
+version = "0.1.0"
+description = "A small, safety-first algorithmic trading bot: backtest -> paper trade -> Robinhood."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pandas>=2.1", "numpy>=1.26", "tzdata>=2024.1", "yfinance>=0.2.40"]
+
+[project.optional-dependencies]
+robinhood = ["robin_stocks>=3.4", "pyotp>=2.9"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "hypothesis>=6.100", "ruff>=0.6"]
+
+[project.scripts]
+algobot = "algobot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["algobot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP", "SIM"]
+ignore = ["SIM108"]  # explicit if/else reads better for beginners
+
+[tool.ruff.lint.isort]
+known-first-party = ["algobot"]

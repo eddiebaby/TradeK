@@ -1,0 +1,13 @@
+# Runtime state (ledger, journal, paper account) — never commit
+state/
+# Your personal config and secrets
+algobot.toml
+.env
+.coverage
+htmlcov/
+__pycache__/
+.pytest_cache/
+.hypothesis/
+*.log
+.venv/
+*.egg-info/

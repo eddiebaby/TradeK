@@ -1,0 +1,35 @@
+# algobot configuration. Copy to algobot.toml (which git ignores) and edit.
+#   cp algobot.example.toml algobot.toml
+
+[bot]
+broker = "paper"          # "paper" = fake money (start here!), "robinhood" = real money
+symbols = ["SPY"]         # tickers the bot may trade; budget is split equally between them
+budget = 150.0            # the most money the bot will ever manage, in dollars
+state_dir = "state"       # ledger, journal and paper account live here (git-ignored)
+data = "yahoo"            # "yahoo" (free daily data) or "csv" (files in csv_dir/SYMBOL.csv)
+# csv_dir = "data"
+history_period = "2y"     # how much daily history to fetch for signals
+rebalance_threshold = 5.0 # ignore position drift smaller than this many dollars
+
+[strategy]
+name = "sma"              # which one to trade: "sma", "rsi" or "buy_and_hold"
+
+[strategy.sma]            # trend following: invested while fast average > slow average
+fast = 20                 # fast moving average length (days)
+slow = 50                 # slow moving average length (days)
+
+[strategy.rsi]            # mean reversion: buy oversold, sell overbought
+period = 14
+buy_below = 30
+sell_above = 70
+
+[risk]
+max_order_dollars = 150.0 # hard cap on any single buy — keep it near budget; guards against typos
+min_order_dollars = 1.0   # Robinhood's fractional-share minimum
+max_orders_per_day = 4
+max_drawdown_pct = 25.0   # stop buying if bot equity falls this far below its peak
+min_hold_days = 1         # never sell shares bought the same day (avoids day trades)
+
+[paper]
+starting_cash = 200.0     # fake money in the paper account
+slippage_bps = 5.0        # simulated cost per fill (5 bps = 0.05%)

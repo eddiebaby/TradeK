@@ -1,0 +1,16 @@
+# Core
+pandas>=2.1
+numpy>=1.26
+tzdata>=2024.1        # timezone data for America/New_York on any OS
+
+# Market data for backtests / signals (free, no API key)
+yfinance>=0.2.40
+
+# Robinhood live trading (optional — only needed with broker = "robinhood")
+robin_stocks>=3.4
+pyotp>=2.9            # generates MFA codes if you use an authenticator app
+
+# Development
+pytest>=8.0
+pytest-cov>=5.0
+hypothesis>=6.100
